@@ -1,0 +1,16 @@
+# Ignore PDFs and Images shared for context
+*.pdf
+*.jpg
+*.png
+*.jpeg
+
+# Ignore Python environment and cache
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+.streamlit/secrets.toml
+
+# Ignore temporary strategy files
+PROJECT_STRATEGY_PROMPT.md
