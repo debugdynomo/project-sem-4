@@ -1,0 +1,102 @@
+from bson import ObjectId
+from bson.errors import InvalidId
+
+def get_effective_permissions(user_id, db):
+    """
+    Given a User's ID, recursively fetches all permissions from their directly 
+    assigned roles and all inherited roles using MongoDB's $graphLookup.
+    
+    This fulfills the "DBMS Concepts" requirement for the G41 system dealing
+    with complex data logic and recursive hierarchies.
+    """
+    
+    if db is None:
+        return []
+
+    # Ensure user_id is an ObjectId
+    if isinstance(user_id, str):
+        try:
+            user_id = ObjectId(user_id)
+        except InvalidId:
+            return []
+    elif not isinstance(user_id, ObjectId):
+        return []
+
+    pipeline = [
+        # 1. Match the specific User
+        {
+            "$match": { "_id": user_id }
+        },
+        # 2. Normalize Assigned_Roles so empty/null users safely return []
+        {
+            "$project": {
+                "Assigned_Roles": {"$ifNull": ["$Assigned_Roles", []]}
+            }
+        },
+        # 3. Use $lookup for direct role docs
+        {
+            "$lookup": {
+                "from": "roles",
+                "localField": "Assigned_Roles",
+                "foreignField": "_id",
+                "as": "Direct_Roles"
+            }
+        },
+        # 4. Use $graphLookup to fetch parent inherited roles recursively
+        # The 'roles' collection holds documents where Parent_Role_id points to another role's _id
+        {
+            "$graphLookup": {
+                "from": "roles",
+                "startWith": "$Direct_Roles.Parent_Role_id",
+                "connectFromField": "Parent_Role_id",
+                "connectToField": "_id",
+                "as": "Inherited_Roles",
+                "depthField": "depth",
+                "maxDepth": 10
+            }
+        },
+        # 5. Merge direct + inherited role docs and flatten permission ids with deduping
+        {
+            "$project": {
+                "All_Roles": {"$concatArrays": ["$Direct_Roles", "$Inherited_Roles"]}
+            }
+        },
+        {
+            "$project": {
+                "Permission_Ids": {
+                    "$reduce": {
+                        "input": "$All_Roles.Permissions",
+                        "initialValue": [],
+                        "in": {"$setUnion": ["$$value", {"$ifNull": ["$$this", []]}]}
+                    }
+                }
+            }
+        },
+        # 6. Resolve actual permission documents using standard $lookup against permissions
+        {
+            "$lookup": {
+                "from": "permissions",
+                "localField": "Permission_Ids",
+                "foreignField": "_id",
+                "as": "Permission_Docs"
+            }
+        },
+        # 7. Keep a clean list of permission names
+        {
+            "$project": {
+                "_id": 0,
+                "Effective_Permissions": {
+                    "$setUnion": [{"$ifNull": ["$Permission_Docs.Permission_name", []]}, []]
+                }
+            }
+        }
+    ]
+
+    result = list(db.users.aggregate(pipeline))
+    
+    # If the user has no roles or no permissions, the result might be empty
+    if not result:
+        return []
+    
+    # Return the clean list of permission strings (e.g., ["READ_PATIENT_DATA", "EDIT_PATIENT_DATA"])
+    return result[0].get("Effective_Permissions", [])
