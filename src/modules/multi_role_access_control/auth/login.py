@@ -1,21 +1,63 @@
+"""
+auth/login.py — Streamlit login page wired to MongoDB backend.
+"""
+import hashlib
+
 import streamlit as st
+from backend.database import get_db_connection
+from backend.audit import log_audit_event
+from backend.rbac import get_effective_permissions
+
 
 def login_page():
     st.title("🏥 MediCare Login")
 
     role = st.selectbox("Login as", ["Patient", "Doctor", "Admin"])
-    email = st.text_input("Email")
+    username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        # Demo login (replace with DB check later)
-        if email and password:
-            st.session_state.logged_in = True
-            st.session_state.role = role
-            st.session_state.page = "dashboard"
-            st.rerun()
-        else:
-            st.error("Please enter email and password")
+        if not username or not password:
+            st.error("Please enter username and password")
+            return
+
+        db = get_db_connection()
+
+        # Look up user by Username (PascalCase — matches DB schema)
+        user = db["users"].find_one({"Username": username})
+
+        if user is None:
+            st.error("❌ User not found. Check your username.")
+            log_audit_event(db, action="LOGIN_FAILED", target_entity="auth",
+                            status="FAILED", details={"reason": "user_not_found", "username": username})
+            return
+
+        # Hash the password attempt (SHA-256) to match signup.py's storage format
+        stored_pw = user.get("Hashed_password", "")
+        attempt_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        if stored_pw != attempt_hash:
+            st.error("❌ Incorrect password.")
+            log_audit_event(db, action="LOGIN_FAILED", user_id=str(user["_id"]),
+                            target_entity="auth", status="FAILED",
+                            details={"reason": "wrong_password"})
+            return
+
+        # ── Success ──
+        # Resolve effective permissions via $graphLookup
+        perms = get_effective_permissions(user["_id"], db)
+
+        st.session_state.logged_in = True
+        st.session_state.role = role
+        st.session_state.user_id = str(user["_id"])
+        st.session_state.username = user.get("Username")
+        st.session_state.permissions = perms
+        st.session_state.page = "dashboard"
+
+        log_audit_event(db, action="LOGIN_SUCCESS", user_id=str(user["_id"]),
+                        target_entity="auth", status="SUCCESS")
+
+        st.success(f"✅ Welcome, {user.get('Username')}!  Permissions: {perms}")
+        st.rerun()
 
     st.markdown("Don't have an account?")
     if st.button("Signup"):

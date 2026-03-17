@@ -1,19 +1,34 @@
 from pymongo import ASCENDING
 from datetime import datetime, timedelta
 
+
+def _is_admin(db, user_id: str) -> bool:
+    """Check if a user holds the 'Admin' role via Assigned_Roles."""
+    user = db["users"].find_one({"_id": user_id})
+    if not user:
+        return False
+    for role_id in user.get("Assigned_Roles", []):
+        role = db["roles"].find_one({"_id": role_id})
+        if role and role.get("Role_name") == "Admin":
+            return True
+    return False
+
+
 def assign_role_to_user(db, admin_id: str, target_user_id: str, new_role: str) -> bool:
     """
     P5 Admin Capability: Appends a static role to a target user.
     """
-    # 1. Strict Security Check: Ensure execution is legitimately from an Admin
-    admin_user = db["users"].find_one({"_id": admin_id})
-    if not admin_user or admin_user.get("primary_role") != "Admin":
+    if not _is_admin(db, admin_id):
         raise PermissionError("Access Denied: Only Admins can execute role bindings.")
-        
-    # 2. Add to set prevents duplicate role assignments
+
+    # Look up role ObjectId by name
+    role_doc = db["roles"].find_one({"Role_name": new_role})
+    if not role_doc:
+        raise ValueError(f"Role '{new_role}' does not exist.")
+
     result = db["users"].update_one(
         {"_id": target_user_id},
-        {"$addToSet": {"assigned_roles": new_role}}
+        {"$addToSet": {"Assigned_Roles": role_doc["_id"]}}
     )
     return result.modified_count > 0
 
@@ -21,13 +36,16 @@ def revoke_role_from_user(db, admin_id: str, target_user_id: str, target_role: s
     """
     P5 Admin Capability: Removes a static role from a target user.
     """
-    admin_user = db["users"].find_one({"_id": admin_id})
-    if not admin_user or admin_user.get("primary_role") != "Admin":
+    if not _is_admin(db, admin_id):
         raise PermissionError("Access Denied: Only Admins can revoke roles.")
-        
+
+    role_doc = db["roles"].find_one({"Role_name": target_role})
+    if not role_doc:
+        raise ValueError(f"Role '{target_role}' does not exist.")
+
     result = db["users"].update_one(
         {"_id": target_user_id},
-        {"$pull": {"assigned_roles": target_role}}
+        {"$pull": {"Assigned_Roles": role_doc["_id"]}}
     )
     return result.modified_count > 0
 
