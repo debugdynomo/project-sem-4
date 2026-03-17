@@ -1,199 +1,274 @@
+"""
+database.py — MongoDB connection & schema setup for G41 Multi-Role Access Control.
+
+Collections (mapped 1:1 from er_final.jpg):
+    users, roles, permissions, delegations, audit_logs
+
+Connection priority:
+    1. st.secrets["MONGO_URI"]   (Streamlit Cloud / local secrets.toml)
+    2. MONGO_URI env var          (CI, Docker, bare-metal)
+    3. localhost fallback         (dev-only)
+"""
+
 import os
 from typing import Any, Dict
 
 import certifi
-from pymongo import MongoClient
+import streamlit as st
+from pymongo import ASCENDING, MongoClient
+from pymongo.database import Database
 from pymongo.errors import CollectionInvalid, OperationFailure
 
-try:
-    import streamlit as st
-except Exception:  # pragma: no cover - streamlit may be unavailable in pure backend runs
-    st = None
 
-client = None
-db_name_cached = None
+# ---------------------------------------------------------------------------
+# 1.  CONNECTION — uses @st.cache_resource so the client survives reruns
+# ---------------------------------------------------------------------------
 
+@st.cache_resource
+def _init_mongo_client() -> MongoClient:
+    """
+    Create and cache a single MongoClient for the lifetime of the app.
+    @st.cache_resource ensures this runs only once, even across Streamlit
+    reruns. The client is thread-safe and connection-pooled.
+    """
+    try:
+        uri = st.secrets["MONGO_URI"]
+    except (FileNotFoundError, KeyError):
+        uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
+
+    return MongoClient(uri, tlsCAFile=certifi.where())
+
+
+def get_db_connection(db_name: str = "CDSS_G41") -> Database:
+    """
+    Return a pymongo Database handle.
+
+    Parameters
+    ----------
+    db_name : str
+        Override for the database name.  Reads from secrets → env → default.
+    """
+    client = _init_mongo_client()
+
+    # Allow the DB name to come from secrets or env if not hardcoded
+    try:
+        resolved_name = st.secrets.get("MONGO_DB_NAME", db_name)
+    except FileNotFoundError:
+        resolved_name = os.environ.get("MONGO_DB_NAME", db_name)
+
+    return client[resolved_name]
+
+
+# ---------------------------------------------------------------------------
+# 2.  COLLECTION TEMPLATES — canonical field reference for G41 (from ER diagram)
+# ---------------------------------------------------------------------------
 
 def get_collection_templates() -> Dict[str, Dict[str, Any]]:
-    """Exact document structures used as canonical templates for G41 collections."""
+    """Exact document shapes used as a reference for all 5 G41 collections."""
     return {
         "users": {
             "_id": "ObjectId",
             "Username": "string",
             "Hashed_password": "string",
             "Email": "string",
-            "Status": "Active|Inactive|Suspended",
-            "Assigned_Roles": ["ObjectId"],
+            "Status": "Active | Inactive | Suspended",
+            "Assigned_Roles": ["ObjectId"],           # M:N → Assigned_to (ER)
         },
         "roles": {
             "_id": "ObjectId",
             "Role_name": "string",
             "Description": "string",
             "Level": "int",
-            "Parent_Role_id": "ObjectId|null",
-            "Permissions": ["ObjectId"],
+            "Parent_Role_id": "ObjectId | null",      # Hierarchy (Recursive) (ER)
+            "Permissions": ["ObjectId"],               # Grants M:N (ER)
         },
         "permissions": {
             "_id": "ObjectId",
             "Permission_name": "string",
             "Description": "string",
         },
+        "delegations": {
+            "_id": "ObjectId",
+            "Delegator_id": "ObjectId",               # Initiates 1:N (ER)
+            "Delegatee_id": "ObjectId",               # Receives  1:N (ER)
+            "Target_Role_id": "ObjectId",             # Authorize N:1 (ER)
+            "Delegation_type": "Hierarchical | Peer-to-Peer | Emergency",
+            "Reason": "string",
+            "Status": "Active | Expired | Revoked",
+            "Start_time": "datetime",
+            "End_time": "datetime",
+        },
         "audit_logs": {
             "_id": "ObjectId",
-            "User_id": "ObjectId|null",
+            "User_id": "ObjectId | null",             # Generates 1:N (ER)
             "Action": "string",
             "Target_Entity": "string",
             "Timestamp": "datetime",
             "IP_Address": "string",
-            "Status": "SUCCESS|FAILED",
-            "Details": "object|null",
+            "Status": "SUCCESS | FAILED",
+            "Details": "object | null",
         },
     }
 
-def get_db_connection():
-    global client, db_name_cached
-    if client is None:
-        try:
-            # First try streamlit secrets (preferred in Streamlit Cloud)
-            if st is None:
-                raise KeyError("streamlit unavailable")
-            mongo_uri = st.secrets["mongo"]["uri"]
-            db_name_cached = st.secrets["mongo"]["db_name"]
-        except (FileNotFoundError, KeyError, AttributeError):
-            # Fallback to local environment variables
-            mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
-            db_name_cached = os.environ.get("MONGO_DB_NAME", "CDSS_G41")
 
-        # certifi.where() avoids SSL errors on some OS
-        client = MongoClient(mongo_uri, tlsCAFile=certifi.where())
-    
-    return client[db_name_cached]
+# ---------------------------------------------------------------------------
+# 3.  SCHEMA VALIDATORS — enforce data integrity at the MongoDB engine level
+# ---------------------------------------------------------------------------
 
-
-def enforce_db_schema(db):
-    """
-    Applies $jsonSchema validators to enforce data integrity 
-    in our NoSQL collections. Similar to SQL table definitions.
-    """
-    
-    # 1. Users Schema
-    users_validator = {
+_VALIDATORS: Dict[str, dict] = {
+    "users": {
         "$jsonSchema": {
             "bsonType": "object",
             "required": ["Username", "Hashed_password", "Email", "Status"],
             "properties": {
-                "Username": {"bsonType": "string", "description": "must be a string and is required"},
-                "Hashed_password": {"bsonType": "string", "description": "must be a string and is required"},
-                "Email": {"bsonType": "string", "pattern": "^.+@.+$", "description": "must be a valid email string and is required"},
-                "Status": {"enum": ["Active", "Inactive", "Suspended"], "description": "must be either Active, Inactive, or Suspended"},
-                "Assigned_Roles": {
+                "Username":        {"bsonType": "string"},
+                "Hashed_password": {"bsonType": "string"},
+                "Email":           {"bsonType": "string", "pattern": r"^.+@.+$"},
+                "Status":          {"enum": ["Active", "Inactive", "Suspended"]},
+                "Assigned_Roles":  {
                     "bsonType": "array",
-                    "description": "must be an array of ObjectIds referencing roles",
-                    "items": { "bsonType": "objectId" }
-                }
-            }
+                    "items": {"bsonType": "objectId"},
+                    "description": "Array of Role ObjectIds (Assigned_to M:N)",
+                },
+            },
         }
-    }
-    
-    # 2. Roles Schema
-    roles_validator = {
+    },
+    "roles": {
         "$jsonSchema": {
             "bsonType": "object",
             "required": ["Role_name", "Level"],
             "properties": {
-                "Role_name": {"bsonType": "string", "description": "must be a string (e.g., 'Lead_Doctor')"},
-                "Description": {"bsonType": "string"},
-                "Level": {"bsonType": "int", "description": "Hierarchy level (e.g., 1 for Admin, 5 for Patient)"},
-                "Parent_Role_id": {"bsonType": ["objectId", "null"], "description": "ObjectId of the parent role for inheritance"},
-                "Permissions": {
-                    "bsonType": "array", 
-                    "description": "Array of ObjectIds referencing permissions",
-                    "items": {"bsonType": "objectId"}
-                }
-            }
+                "Role_name":      {"bsonType": "string"},
+                "Description":    {"bsonType": "string"},
+                "Level":          {"bsonType": "int"},
+                "Parent_Role_id": {"bsonType": ["objectId", "null"]},
+                "Permissions":    {
+                    "bsonType": "array",
+                    "items": {"bsonType": "objectId"},
+                    "description": "Array of Permission ObjectIds (Grants M:N)",
+                },
+            },
         }
-    }
-    
-    # 3. Permissions Schema
-    permissions_validator = {
+    },
+    "permissions": {
         "$jsonSchema": {
             "bsonType": "object",
             "required": ["Permission_name"],
             "properties": {
-                "Permission_name": {"bsonType": "string", "description": "Unique string like 'READ_PATIENT_DATA'"},
-                "Description": {"bsonType": "string"}
-            }
+                "Permission_name": {"bsonType": "string"},
+                "Description":     {"bsonType": "string"},
+            },
         }
-    }
-    
-    # 4. Audit Logs Schema
-    logs_validator = {
+    },
+    "delegations": {
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": [
+                "Delegator_id", "Delegatee_id", "Target_Role_id",
+                "Status", "Start_time", "End_time",
+            ],
+            "properties": {
+                "Delegator_id":    {"bsonType": "objectId"},
+                "Delegatee_id":    {"bsonType": "objectId"},
+                "Target_Role_id":  {"bsonType": "objectId"},
+                "Delegation_type": {
+                    "enum": ["Hierarchical", "Peer-to-Peer", "Emergency"],
+                },
+                "Reason":     {"bsonType": "string"},
+                "Status":     {"enum": ["Active", "Expired", "Revoked"]},
+                "Start_time": {"bsonType": "date"},
+                "End_time":   {"bsonType": "date"},
+            },
+        }
+    },
+    "audit_logs": {
         "$jsonSchema": {
             "bsonType": "object",
             "required": ["Action", "Timestamp"],
             "properties": {
-                "User_id": {"bsonType": ["objectId", "null"], "description": "ObjectId of the user who initiated the action"},
-                "Action": {"bsonType": "string", "description": "Description of the event"},
-                "Target_Entity": {"bsonType": "string", "description": "The table or entity modified"},
-                "Timestamp": {"bsonType": "date"},
-                "IP_Address": {"bsonType": "string"},
-                "Status": {"enum": ["SUCCESS", "FAILED"], "description": "Success/Failure status"},
-                "Details": {"bsonType": ["object", "null"], "description": "Optional structured metadata"},
-            }
+                "User_id":       {"bsonType": ["objectId", "null"]},
+                "Action":        {"bsonType": "string"},
+                "Target_Entity": {"bsonType": "string"},
+                "Timestamp":     {"bsonType": "date"},
+                "IP_Address":    {"bsonType": "string"},
+                "Status":        {"enum": ["SUCCESS", "FAILED"]},
+                "Details":       {"bsonType": ["object", "null"]},
+            },
         }
-    }
+    },
+}
 
-    validators = [
-        ("users", users_validator),
-        ("roles", roles_validator),
-        ("permissions", permissions_validator),
-        ("audit_logs", logs_validator)
-    ]
 
-    for collection_name, validator in validators:
+def enforce_db_schema(db: Database) -> None:
+    """Apply $jsonSchema validators to all 5 G41 collections."""
+    for name, validator in _VALIDATORS.items():
         try:
-            # Try applying validator to existing collection
-            db.command("collMod", collection_name, validator=validator)
-            print(f"Updated schema validator for `{collection_name}`.")
-        except OperationFailure as e:
-            if "ns does not exist" in str(e).lower():
-                # Collection doesn't exist, create it with validator
-                db.create_collection(collection_name, validator=validator)
-                print(f"Created collection `{collection_name}` with schema validator.")
+            db.command("collMod", name, validator=validator)
+        except OperationFailure as exc:
+            if "ns does not exist" in str(exc).lower():
+                db.create_collection(name, validator=validator)
             else:
-                print(f"Error configuring `{collection_name}`: {e}")
                 raise
-        except CollectionInvalid as e:
-            print(f"Collection creation race for `{collection_name}`: {e}")
+        except CollectionInvalid:
+            pass   # another thread/process created it first — safe to ignore
 
 
-def create_indexes(db):
+# ---------------------------------------------------------------------------
+# 4.  INDEXES — uniqueness constraints + performance indexes + TTL
+# ---------------------------------------------------------------------------
+
+def create_indexes(db: Database) -> None:
     """
-    Creates necessary database indexes to ensure uniqueness and fast queries.
+    Idempotent index creation for all 5 collections.
+    Calling this multiple times is safe (MongoDB skips existing indexes).
     """
-    # Unique Constraints
-    db.users.create_index("Email", unique=True)
-    db.users.create_index("Username", unique=True)
-    db.roles.create_index("Role_name", unique=True)
-    db.permissions.create_index("Permission_name", unique=True)
-    
-    # Performance Indexes
-    db.roles.create_index("Parent_Role_id")
-    db.users.create_index("Assigned_Roles")
-    db.audit_logs.create_index("Timestamp")
-    db.audit_logs.create_index([("User_id", 1), ("Timestamp", -1)])
-    print("Database indexes ensured.")
+    # ── users ──
+    db.users.create_index("Email",    unique=True, name="idx_unique_email")
+    db.users.create_index("Username", unique=True, name="idx_unique_username")
+    db.users.create_index("Assigned_Roles",        name="idx_assigned_roles")
+
+    # ── roles ──
+    db.roles.create_index("Role_name",     unique=True, name="idx_unique_role_name")
+    db.roles.create_index("Parent_Role_id",             name="idx_parent_role")
+
+    # ── permissions ──
+    db.permissions.create_index("Permission_name", unique=True, name="idx_unique_perm")
+
+    # ── delegations (includes TTL auto-expiry) ──
+    db.delegations.create_index(
+        [("End_time", ASCENDING)],
+        expireAfterSeconds=0,
+        name="ttl_delegation_expiry",
+    )
+    db.delegations.create_index(
+        [("Delegatee_id", ASCENDING), ("Status", ASCENDING), ("Start_time", ASCENDING)],
+        name="idx_active_delegations",
+    )
+
+    # ── audit_logs ──
+    db.audit_logs.create_index("Timestamp",                      name="idx_audit_ts")
+    db.audit_logs.create_index([("User_id", 1), ("Timestamp", -1)], name="idx_audit_user_ts")
 
 
-def init_db():
-    print("Connecting to MongoDB...")
+# ---------------------------------------------------------------------------
+# 5.  PUBLIC ENTRY POINT
+# ---------------------------------------------------------------------------
+
+def init_db() -> Database:
+    """
+    Full initialisation sequence:
+        connect → enforce schema → create indexes → return db handle.
+
+    Safe to call on every Streamlit rerun because the connection is cached
+    and index creation is idempotent.
+    """
     db = get_db_connection()
-    print(f"Connected to database: {db.name}")
-    
     enforce_db_schema(db)
     create_indexes(db)
     return db
 
 
+# Allow standalone execution:  python -m backend.database
 if __name__ == "__main__":
-    init_db()
+    database = init_db()
+    print(f"✅ Connected to '{database.name}' — collections: {database.list_collection_names()}")
