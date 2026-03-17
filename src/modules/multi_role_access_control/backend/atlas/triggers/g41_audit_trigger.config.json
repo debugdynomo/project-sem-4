@@ -1,0 +1,26 @@
+{
+  "name": "g41_audit_users_roles",
+  "type": "DATABASE",
+  "disabled": false,
+  "config": {
+    "operation_types": ["INSERT", "UPDATE"],
+    "database": "CDSS_G41",
+    "collection": "users",
+    "service_name": "atlas_service",
+    "match": {
+      "ns.coll": {
+        "$in": ["users", "roles"]
+      }
+    },
+    "full_document": true,
+    "unordered": false
+  },
+  "event_processors": {
+    "FUNCTION": {
+      "config": {
+        "function_name": "g41_audit_trigger"
+      }
+    }
+  }
+}
+

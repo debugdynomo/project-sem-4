@@ -7,6 +7,8 @@
 # Ignore Python environment and cache
 venv/
 .venv/
+.idea/
+.vscode/
 __pycache__/
 *.pyc
 
