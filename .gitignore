@@ -17,3 +17,7 @@ __pycache__/
 
 # Ignore temporary strategy files
 PROJECT_STRATEGY_PROMPT.md
+
+**/*.pptx
+**/generate_ppt.py
+**/.streamlit
