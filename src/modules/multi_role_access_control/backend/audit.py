@@ -40,7 +40,7 @@ def log_audit_event(
     }
     db.audit_logs.insert_one(doc)
 
-def audit_action(action_name, target_entity="System"):
+def audit_action(action, target_entity="System"):
     """
     A Python decorator to automatically log backend actions to the 
     MongoDB 'audit_logs' collection. 
@@ -52,11 +52,18 @@ def audit_action(action_name, target_entity="System"):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # Extract dependencies (db and user context) from the function's arguments
-            db = kwargs.get("db")
-            user_id = kwargs.get("user_id")
+            db = kwargs.get("db") if "db" in kwargs else (args[0] if len(args) > 0 else None)
+            
+            user_id = kwargs.get("user_id") if "user_id" in kwargs else (
+                kwargs.get("admin_id") if "admin_id" in kwargs else (
+                    args[1] if len(args) > 1 else None
+                )
+            )
             
             # In a real Streamlit app, IP might be pulled from request headers
             ip_address = kwargs.get("ip_address", "127.0.0.1")
+            
+            # Use dynamic target_entity if passed, else fallback to decorator value
             resolved_target_entity = kwargs.get("target_entity", target_entity)
 
             try:
@@ -64,7 +71,7 @@ def audit_action(action_name, target_entity="System"):
                 if db is not None:
                     log_audit_event(
                         db,
-                        action=action_name,
+                        action=action,
                         user_id=user_id,
                         target_entity=resolved_target_entity,
                         ip_address=ip_address,
@@ -76,7 +83,7 @@ def audit_action(action_name, target_entity="System"):
                     # Attempt to capture failure path as well for forensic parity.
                     log_audit_event(
                         db,
-                        action=action_name,
+                        action=action,
                         user_id=user_id,
                         target_entity=resolved_target_entity,
                         ip_address=ip_address,

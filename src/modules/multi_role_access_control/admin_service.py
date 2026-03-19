@@ -189,3 +189,19 @@ def get_upcoming_expirations(db, days_out: int) -> list:
         expiring_list.append(doc)
         
     return expiring_list
+
+@audit_action(action="DELETE_USER", target_entity="users")
+def delete_user(db, admin_id: str, target_user_id: str) -> bool:
+    if not _is_admin(db, admin_id):
+        raise PermissionError("Access Denied: Only Admins can delete users.")
+
+    result = db["users"].delete_one({"_id": safe_objectid(target_user_id)})
+    return result.deleted_count > 0
+
+@audit_action(action="DELETE_ROLE", target_entity="roles")
+def delete_role(db, admin_id: str, role_name: str) -> bool:
+    if not _is_admin(db, admin_id):
+        raise PermissionError("Access Denied: Only Admins can delete roles.")
+
+    result = db["roles"].delete_one({"Role_name": role_name})
+    return result.deleted_count > 0
