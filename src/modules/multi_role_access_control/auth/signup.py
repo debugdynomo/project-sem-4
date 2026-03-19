@@ -12,7 +12,13 @@ from backend.audit import log_audit_event
 def signup_page():
     st.title("Create Account")
 
-    role = st.selectbox("Signup as", ["Patient", "Doctor"])
+    db = get_db_connection()
+    # Build a list of creatable roles dynamically from MongoDB 
+    available_roles = [r["Role_name"] for r in db["roles"].find({"Role_name": {"$in": ["Patient", "Doctor"]}})]
+    if not available_roles:
+        available_roles = ["Patient", "Doctor"] # safe fallback
+        
+    role = st.selectbox("Signup as", available_roles)
     username = st.text_input("Username")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
@@ -22,7 +28,9 @@ def signup_page():
             st.error("All fields are required.")
             return
 
-        db = get_db_connection()
+        if not username or not email or not password:
+            st.error("All fields are required.")
+            return
 
         # Check if username or email already exists
         if db["users"].find_one({"Username": username}):

@@ -12,7 +12,6 @@ from backend.rbac import get_effective_permissions
 def login_page():
     st.title("🏥 MediCare Login")
 
-    role = st.selectbox("Login as", ["Patient", "Doctor", "Admin"])
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
@@ -42,9 +41,15 @@ def login_page():
                             details={"reason": "wrong_password"})
             return
 
-        # ── Success ──
         # Resolve effective permissions via $graphLookup
         perms = get_effective_permissions(user["_id"], db)
+        
+        # Calculate Primary Role strictly from MongoDB database to prevent UI override spoofing
+        role = "Patient" # Fallback safety
+        if user.get("Assigned_Roles") and len(user["Assigned_Roles"]) > 0:
+            role_doc = db["roles"].find_one({"_id": user["Assigned_Roles"][0]})
+            if role_doc:
+                role = role_doc.get("Role_name", "Patient")
 
         st.session_state.logged_in = True
         st.session_state.role = role
