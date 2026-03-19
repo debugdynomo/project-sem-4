@@ -28,12 +28,17 @@ def doctor_dashboard():
     # Check Hierarchy for "Lead Doctor" status
     # This uses the recursive logic in rbac.py (get_active_roles)
     active_roles = get_active_roles(user_id, db)
+    perms = get_effective_permissions(user_id, db)
     is_lead_doctor = "Lead Doctor" in active_roles
     
     # 2. Sidebar Configuration
     menu_items = ["Clinical Overview", "My Permissions", "Delegation Center (G5)", "Patient Access Logs"]
     if is_lead_doctor:
         menu_items.insert(2, "Approve Delegations")  # Add after "My Permissions" or anywhere logic
+        
+    if "CREATE_USER" in perms or "Admin" in active_roles:
+        menu_items.extend(["User Management", "Role Management", "System Audit"])
+
     menu_items.append("Logout")
 
     selected_page = sidebar(menu_items)
@@ -57,7 +62,6 @@ def doctor_dashboard():
         st.subheader("My Effective Permissions")
         st.markdown("Based on your assigned roles and active delegations (Recursive Inheritance):")
         
-        perms = get_effective_permissions(user_id, db)
         if perms:
             df_perms = pd.DataFrame(perms, columns=["Permission Code"])
             st.dataframe(df_perms, use_container_width=True)
@@ -79,6 +83,17 @@ def doctor_dashboard():
     elif selected_page == "Patient Access Logs":
         _render_audit_logs(db, user_id)
 
+    elif selected_page == "User Management":
+        from frontend.ui_pages.users_page import show_users_page
+        show_users_page()
+
+    elif selected_page == "Role Management":
+        from frontend.ui_pages.roles_page import show_roles_page
+        show_roles_page()
+
+    elif selected_page == "System Audit":
+        from dashboards.admin_dashboard import show_system_audit
+        show_system_audit(db)
 
 def _render_delegation_center(db, user_id):
     st.markdown("### 🏥 Clinical Role Delegation (M:N)")

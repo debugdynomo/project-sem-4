@@ -184,6 +184,17 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
     result = db["delegations"].insert_one(delegation_doc)
     return str(result.inserted_id)
 
+@audit_action(action="REVOKE_DELEGATION", target_entity="delegations")
+def revoke_delegation(db, admin_id: str, delegation_id: str) -> bool:
+    """
+    Revokes an existing active delegation.
+    """
+    result = db["delegations"].update_one(
+        {"_id": safe_objectid(delegation_id)},
+        {"$set": {"Status": "Revoked"}}
+    )
+    return result.modified_count > 0
+
 def get_pending_delegations(db) -> list:
     """
     Returns pending delegations enriched with names for UI display.

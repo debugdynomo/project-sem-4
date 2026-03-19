@@ -6,7 +6,8 @@ from admin_service import (
     get_all_users,
     get_all_roles,
     get_active_delegations,
-    create_delegation
+    create_delegation,
+    revoke_delegation
 )
 
 def show_delegation_page():
@@ -81,7 +82,7 @@ def show_delegation_page():
         revoke_id = st.selectbox("Select Delegation to Revoke", del_ids)
         if st.button("Revoke Delegation"):
             try:
-                db.delegations.update_one({"_id": revoke_id}, {"$set": {"Status": "Revoked"}})
+                revoke_delegation(db, admin_id, revoke_id)
                 st.success("Delegation revoked successfully")
                 st.rerun()
             except Exception as e:
