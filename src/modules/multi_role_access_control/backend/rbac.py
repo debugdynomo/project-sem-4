@@ -48,8 +48,8 @@ def get_effective_permissions(user_id, db):
                                 "$and": [
                                     {"$eq": ["$Delegatee_id", "$$user"]},
                                     {"$eq": ["$Status", "Active"]},
-                                    {"$lte": ["$Start_time", now]},
-                                    {"$lt": [now, "$End_time"]}
+                                    {"$lte": ["$Start_time", "$$NOW"]},
+                                    {"$lt": ["$$NOW", "$End_time"]}
                                 ]
                             }
                         }
@@ -136,3 +136,108 @@ def get_effective_permissions(user_id, db):
     
     # Return the clean list of permission strings (e.g., ["READ_PATIENT_DATA", "EDIT_PATIENT_DATA"])
     return result[0].get("Effective_Permissions", [])
+
+
+def get_active_roles(user_id, db):
+    """
+    Returns a list of all role names (direct + inherited) for a user.
+    Useful for checking hierarchy (e.g. is this user a 'Lead Doctor'?)
+    """
+    if db is None:
+        return []
+
+    # Ensure user_id is an ObjectId
+    if isinstance(user_id, str):
+        try:
+            user_id = ObjectId(user_id)
+        except InvalidId:
+            return []
+    elif not isinstance(user_id, ObjectId):
+        return []
+
+    from datetime import datetime
+    now = datetime.utcnow()
+
+    pipeline = [
+        # 1. Match the specific User
+        {
+            "$match": { "_id": user_id }
+        },
+        # 2. Normalize Assigned_Roles
+        {
+            "$project": {
+                "Assigned_Roles": {"$ifNull": ["$Assigned_Roles", []]}
+            }
+        },
+        # 2.5. Fetch active Delegations
+        {
+            "$lookup": {
+                "from": "delegations",
+                "let": { "user": "$_id" },
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$and": [
+                                    {"$eq": ["$Delegatee_id", "$$user"]},
+                                    {"$eq": ["$Status", "Active"]},
+                                    {"$lte": ["$Start_time", "$$NOW"]},
+                                    {"$lt": ["$$NOW", "$End_time"]}
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "as": "Active_Delegations"
+            }
+        },
+        # Combine
+        {
+            "$project": {
+                "combined_roles": {
+                    "$setUnion": [
+                        "$Assigned_Roles",
+                        {"$map": {"input": "$Active_Delegations", "as": "d", "in": "$$d.Target_Role_id"}}
+                    ]
+                }
+            }
+        },
+        # 3. Lookup direct roles
+        {
+            "$lookup": {
+                "from": "roles",
+                "localField": "combined_roles",
+                "foreignField": "_id",
+                "as": "Direct_Roles"
+            }
+        },
+        # 4. GraphLookup inherited roles
+        {
+            "$graphLookup": {
+                "from": "roles",
+                "startWith": "$Direct_Roles.Parent_Role_id",
+                "connectFromField": "Parent_Role_id",
+                "connectToField": "_id",
+                "as": "Inherited_Roles",
+                "depthField": "depth",
+                "maxDepth": 10
+            }
+        },
+        # 5. Project all role names
+        {
+            "$project": {
+                "All_Role_Names": {
+                    "$setUnion": [
+                        "$Direct_Roles.Role_name",
+                        "$Inherited_Roles.Role_name"
+                    ]
+                }
+            }
+        }
+    ]
+
+    result = list(db.users.aggregate(pipeline))
+    if not result:
+        return []
+    
+    return result[0].get("All_Role_Names", [])

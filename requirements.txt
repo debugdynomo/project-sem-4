@@ -3,3 +3,4 @@ streamlit-option-menu
 matplotlib
 pymongo
 certifi
+pandas

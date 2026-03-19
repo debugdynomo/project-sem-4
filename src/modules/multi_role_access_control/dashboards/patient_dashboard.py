@@ -167,26 +167,27 @@ def render_privacy_and_consent():
                                 start_dt = datetime.datetime.combine(valid_from, time.min, tzinfo=timezone.utc)
                                 end_dt = datetime.datetime.combine(valid_until, time.max, tzinfo=timezone.utc)
                                 
-                                doc = {
-                                    "Delegator_id": st.session_state.get("user_id"),
-                                    "Delegatee_id": del_user["_id"],
-                                    "Target_Role_id": p_role["_id"],
-                                    "Delegation_type": "Health-Proxy", 
-                                    "Reason": reason,
-                                    "Status": "Active",
-                                    "Start_time": start_dt,
-                                    "End_time": end_dt,
-                                    "Delegatee_Username": delegate_email,
-                                    "Target_Role_Name": "Patient"
-                                }
-                                db["delegations"].insert_one(doc)
-                                log_audit_event(db, action="HEALTH_PROXY_GRANTED", 
-                                               user_id=st.session_state.get("user_id"),
-                                               target_entity=str(del_user["_id"]), status="SUCCESS", 
-                                               details={"delegatee": delegate_email})
-                                               
-                                st.success(f"Successfully granted temporary access to {delegate_email}.")
-                                st.rerun()
+                                from admin_service import create_delegation
+                                try:
+                                    req_id = create_delegation(
+                                        db=db,
+                                        delegator_id=st.session_state.get("user_id"),
+                                        delegatee_id=del_user["_id"],
+                                        target_role_id=p_role["_id"],
+                                        start_time=start_dt,
+                                        end_time=end_dt,
+                                        reason=reason,
+                                        delegation_type="Health-Proxy"
+                                    )
+                                    log_audit_event(db, action="HEALTH_PROXY_GRANTED", 
+                                                   user_id=st.session_state.get("user_id"),
+                                                   target_entity=str(del_user["_id"]), status="SUCCESS", 
+                                                   details={"delegatee": delegate_email, "delegation_id": req_id})
+                                                   
+                                    st.success(f"Successfully granted temporary access to {delegate_email}.")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Validation or Database Error: {e}")
                             else:
                                 st.error("Target username not found or Patient role missing in DB.")
                         except Exception as e:

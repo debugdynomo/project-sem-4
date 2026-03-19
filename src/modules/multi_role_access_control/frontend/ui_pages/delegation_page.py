@@ -6,8 +6,7 @@ from admin_service import (
     get_all_users,
     get_all_roles,
     get_active_delegations,
-    create_delegation,
-    revoke_delegation
+    create_delegation
 )
 
 def show_delegation_page():
@@ -36,19 +35,26 @@ def show_delegation_page():
     if st.button("Create Delegation"):
         if delegator != delegatee:
             try:
-                create_delegation(
-                    db,
-                    admin_id,
-                    delegator,
-                    delegatee,
-                    role,
-                    datetime.combine(start_date, datetime.min.time()),
-                    datetime.combine(end_date, datetime.max.time()),
-                    reason
-                )
-                st.success("Delegation created successfully")
+                delegator_id = next((u["_id"] for u in users if u.get("Username") == delegator), None)
+                delegatee_id = next((u["_id"] for u in users if u.get("Username") == delegatee), None)
+                role_id = next((r["_id"] for r in roles if r.get("Role_name") == role), None)
+
+                if not delegator_id or not delegatee_id or not role_id:
+                    st.error("Invalid selection for users or role.")
+                else:
+                    create_delegation(
+                        db,
+                        delegator_id,
+                        delegatee_id,
+                        role_id,
+                        datetime.combine(start_date, datetime.min.time()),
+                        datetime.combine(end_date, datetime.max.time()),
+                        reason,
+                        delegation_type="Hierarchical"
+                    )
+                    st.success("Delegation created successfully")
             except Exception as e:
-                st.error(f"Error: {str(e)}")
+                st.error(f"Validation or Database Error: {str(e)}")
         else:
             st.error("Delegator and Delegatee cannot be identical")
 
@@ -75,8 +81,9 @@ def show_delegation_page():
         revoke_id = st.selectbox("Select Delegation to Revoke", del_ids)
         if st.button("Revoke Delegation"):
             try:
-                revoke_delegation(db, admin_id, revoke_id)
+                db.delegations.update_one({"_id": revoke_id}, {"$set": {"Status": "Revoked"}})
                 st.success("Delegation revoked successfully")
+                st.rerun()
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 

@@ -27,3 +27,5 @@ PROJECT_STRATEGY_PROMPT.md
 **/*.mmd
 **/package.json
 **/package-lock.json
+
+test_delegation_mn.py

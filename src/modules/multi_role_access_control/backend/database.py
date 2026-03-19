@@ -175,7 +175,7 @@ _VALIDATORS: Dict[str, dict] = {
                     "enum": ["Hierarchical", "Peer-to-Peer", "Emergency"],
                 },
                 "Reason":     {"bsonType": "string"},
-                "Status":     {"enum": ["Active", "Expired", "Revoked"]},
+                "Status":     {"enum": ["Active", "Expired", "Revoked", "Pending", "Rejected"]},
                 "Start_time": {"bsonType": "date"},
                 "End_time":   {"bsonType": "date"},
             },
