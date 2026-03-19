@@ -22,6 +22,9 @@ def get_effective_permissions(user_id, db):
     elif not isinstance(user_id, ObjectId):
         return []
 
+    from datetime import datetime
+    now = datetime.utcnow()
+
     pipeline = [
         # 1. Match the specific User
         {
@@ -33,11 +36,44 @@ def get_effective_permissions(user_id, db):
                 "Assigned_Roles": {"$ifNull": ["$Assigned_Roles", []]}
             }
         },
-        # 3. Use $lookup for direct role docs
+        # 2.5. Fetch active Delegations where Delegatee_id == user_id
+        {
+            "$lookup": {
+                "from": "delegations",
+                "let": { "user": "$_id" },
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$and": [
+                                    {"$eq": ["$Delegatee_id", "$$user"]},
+                                    {"$eq": ["$Status", "Active"]},
+                                    {"$lte": ["$Start_time", now]},
+                                    {"$lt": [now, "$End_time"]}
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "as": "Active_Delegations"
+            }
+        },
+        # Combine user's Assigned_Roles and Target_Role_id from Active_Delegations
+        {
+            "$project": {
+                "combined_roles": {
+                    "$setUnion": [
+                        "$Assigned_Roles",
+                        {"$map": {"input": "$Active_Delegations", "as": "d", "in": "$$d.Target_Role_id"}}
+                    ]
+                }
+            }
+        },
+        # 3. Use $lookup for direct role docs (using combined_roles)
         {
             "$lookup": {
                 "from": "roles",
-                "localField": "Assigned_Roles",
+                "localField": "combined_roles",
                 "foreignField": "_id",
                 "as": "Direct_Roles"
             }

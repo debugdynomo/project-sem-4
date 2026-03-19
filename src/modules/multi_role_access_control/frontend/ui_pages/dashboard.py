@@ -2,17 +2,21 @@ import streamlit as st
 # from backend.services.user_service import get_all_users
 # from backend.services.role_service import get_all_roles
 # from backend.services.access_control_service import get_active_delegations
-from mock_backend.services import get_all_users
-from mock_backend.services import get_all_roles
-from mock_backend.services import get_active_delegations
+from backend.database import get_db_connection
+from admin_service import (
+    get_all_users,
+    get_all_roles,
+    get_active_delegations
+)
 
 def show_dashboard():
 
     st.title("System Dashboard")
 
-    users = get_all_users()
-    roles = get_all_roles()
-    delegations = get_active_delegations()
+    db = get_db_connection()
+    users = get_all_users(db)
+    roles = get_all_roles(db)
+    delegations = get_active_delegations(db)
 
     col1, col2, col3 = st.columns(3)
 
@@ -30,4 +34,4 @@ def show_dashboard():
     st.subheader("Recent Users")
 
     for user in users[:5]:
-        st.write(f"{user['username']} - {user['email']}")
+        st.write(f"{user.get('Username')} - {user.get('Email')}")

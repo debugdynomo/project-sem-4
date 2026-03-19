@@ -1,25 +1,28 @@
 import streamlit as st
 from datetime import datetime
 
-# from backend.services.user_service import get_all_users
-# from backend.services.role_service import get_all_roles
-# from backend.services.access_control_service import create_delegation, get_active_delegations
-from mock_backend.services import get_all_users
-from mock_backend.services import get_all_roles
-from mock_backend.services import get_active_delegations, create_delegation
-
+from backend.database import get_db_connection
+from admin_service import (
+    get_all_users,
+    get_all_roles,
+    get_active_delegations,
+    create_delegation,
+    revoke_delegation
+)
 
 def show_delegation_page():
+    db = get_db_connection()
+    admin_id = st.session_state.get("user_id")
 
     st.title("Role Delegation")
 
     st.subheader("Create Delegation")
 
-    users = get_all_users()
-    roles = get_all_roles()
+    users = get_all_users(db)
+    roles = get_all_roles(db)
 
-    user_names = [u["username"] for u in users]
-    role_names = [r["role_name"] for r in roles]
+    user_names = [u.get("Username", "Unknown") for u in users]
+    role_names = [r.get("Role_name", "Unknown") for r in roles]
 
     delegator = st.selectbox("Delegator (From User)", user_names)
     delegatee = st.selectbox("Delegatee (To User)", user_names)
@@ -31,30 +34,51 @@ def show_delegation_page():
     reason = st.text_input("Reason")
 
     if st.button("Create Delegation"):
-
         if delegator != delegatee:
-
-            create_delegation(
-                delegator,
-                delegatee,
-                role,
-                datetime.combine(start_date, datetime.min.time()),
-                datetime.combine(end_date, datetime.min.time()),
-                reason
-            )
-
-            st.success("Delegation created successfully")
-
+            try:
+                create_delegation(
+                    db,
+                    admin_id,
+                    delegator,
+                    delegatee,
+                    role,
+                    datetime.combine(start_date, datetime.min.time()),
+                    datetime.combine(end_date, datetime.max.time()),
+                    reason
+                )
+                st.success("Delegation created successfully")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
         else:
-            st.error("Delegator and Delegatee cannot be same")
+            st.error("Delegator and Delegatee cannot be identical")
 
     st.divider()
 
     st.subheader("Active Delegations")
 
-    delegations = get_active_delegations()
+    delegations = get_active_delegations(db)
+    
+    del_formatted = []
+    for d in delegations:
+        record = d.copy()
+        record["_id"] = str(d["_id"])
+        record["Delegator_id"] = str(d.get("Delegator_id"))
+        record["Delegatee_id"] = str(d.get("Delegatee_id"))
+        record["Target_Role_id"] = str(d.get("Target_Role_id"))
+        del_formatted.append(record)
 
-    if delegations:
-        st.dataframe(delegations)
+    if del_formatted:
+        st.dataframe(del_formatted)
+        
+        st.subheader("Revoke Delegation")
+        del_ids = [d["_id"] for d in del_formatted]
+        revoke_id = st.selectbox("Select Delegation to Revoke", del_ids)
+        if st.button("Revoke Delegation"):
+            try:
+                revoke_delegation(db, admin_id, revoke_id)
+                st.success("Delegation revoked successfully")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
     else:
         st.write("No active delegations")

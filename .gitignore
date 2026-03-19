@@ -4,9 +4,11 @@
 *.png
 *.jpeg
 
+**/*guide.md
+
 # Ignore Python environment and cache
-venv/
-.venv/
+**/venv/
+**/.venv/
 .idea/
 .vscode/
 __pycache__/
@@ -21,3 +23,7 @@ PROJECT_STRATEGY_PROMPT.md
 **/*.pptx
 **/generate_ppt.py
 **/.streamlit
+
+**/*.mmd
+**/package.json
+**/package-lock.json

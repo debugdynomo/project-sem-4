@@ -75,21 +75,22 @@ def seed_db():
         {
             "Username": "admin_alice",
             "Email": "alice@hospital.com",
-            "Hashed_password": "hashed_pw_123", # Placeholder
+            # sha256 for "password123"
+            "Hashed_password": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
             "Status": "Active",
             "Assigned_Roles": [admin_id]
         },
         {
             "Username": "dr_bob",
             "Email": "bob@hospital.com",
-            "Hashed_password": "hashed_pw_456",
+            "Hashed_password": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
             "Status": "Active",
             "Assigned_Roles": [doctor_id]
         },
         {
             "Username": "lead_dr_charlie",
             "Email": "charlie@hospital.com",
-            "Hashed_password": "hashed_pw_789",
+            "Hashed_password": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
             "Status": "Active",
             "Assigned_Roles": [lead_doctor_id]
         }

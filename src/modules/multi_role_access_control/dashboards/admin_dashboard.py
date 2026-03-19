@@ -1,9 +1,13 @@
 # dashboards/admin_dashboard.py
 import streamlit as st
+import pymongo
 from components.sidebar import sidebar
 from components.charts import patient_line_chart, appointment_donut_chart
+from backend.database import get_db_connection
 
 def admin_dashboard():
+    db = get_db_connection()
+    
     # ---------- Session Defaults ----------
     st.session_state.setdefault("view", "dashboard")
     st.session_state.setdefault("selected_category", None)
@@ -29,22 +33,25 @@ def admin_dashboard():
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        # Patient Statistics Card
-        st.markdown("### Patient Statistics")
+        # Access Statistics Card
+        st.markdown("### Access Statistics")
         metric_cols = st.columns(2)
+        
+        users_count = db.users.count_documents({})
+        roles_count = db.roles.count_documents({})
+        delegations_count = db.delegations.count_documents({"Status": "Active"})
+        
         with metric_cols[0]:
-            st.metric("Total", "990", help="Total registered patients")
+            st.metric("Total Users", users_count, help="Total registered system users")
         with metric_cols[1]:
-            # Gender breakdown
-            st.markdown("**Gender Distribution**")
-            st.markdown("🟣 Women 44%")
-            st.markdown("⚪ Men 56%")
+            st.metric("Configured Roles", roles_count)
         
         sub_cols = st.columns(2)
         with sub_cols[0]:
-            st.metric("New Patients", "67", delta="39%", delta_color="normal")
+            st.metric("Active Delegations", delegations_count)
         with sub_cols[1]:
-            st.metric("Old Patients", "27", delta="-64%", delta_color="inverse")
+            audit_events = db.audit_logs.count_documents({})
+            st.metric("Security Events", audit_events)
     
     with col2:
         # Your Patients Today
@@ -76,27 +83,25 @@ def admin_dashboard():
     col3, col4 = st.columns([1, 1])
     
     with col3:
-        st.markdown("### Recent queries")
+        st.markdown("### Recent Audit Logs")
         
-        # Filter buttons
-        filter_cols = st.columns([1, 1, 1, 3])
-        with filter_cols[0]:
-            st.button("All", type="primary", use_container_width=True)
-        with filter_cols[1]:
-            st.button("Unsaid", use_container_width=True)
-        with filter_cols[2]:
-            st.button("New", use_container_width=True)
+        recent_logs = list(db.audit_logs.find().sort("Timestamp", pymongo.DESCENDING).limit(5))
         
-        st.markdown("---")
-        st.caption("14 Jun 2023 / 01:50PM")
-        st.markdown("**Addiction blood bank bone marrow contagious disinfectants?**")
-        query_cols = st.columns([2, 2, 1])
-        with query_cols[0]:
-            st.button("Read more", key="read1")
-        with query_cols[1]:
-            st.button("Reply", key="reply1")
-        with query_cols[2]:
-            st.markdown("💬")
+        if not recent_logs:
+            st.write("No recent security events.")
+        else:
+            for log in recent_logs:
+                ts = log.get("Timestamp")
+                ts_str = ts.strftime("%d %b %Y / %I:%M%p") if ts else "Unknown"
+                action = log.get("Action", "UNKNOWN")
+                status = log.get("Status", "UNKNOWN")
+                color = "green" if status == "SUCCESS" else "red"
+                
+                st.markdown("---")
+                st.caption(f"🕒 {ts_str}")
+                st.markdown(f"**{action}** - <span style='color:{color}'>{status}</span>", unsafe_allow_html=True)
+                st.caption(f"Target: {log.get('Target_Entity')} | IP: {log.get('IP_Address', 'Unknown')}")
+    
     
     with col4:
         st.markdown("### Laboratory test")
