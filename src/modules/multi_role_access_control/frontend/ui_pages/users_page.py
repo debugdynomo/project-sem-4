@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import time
 
 from backend.database import get_db_connection
 from backend.rbac import get_effective_permissions
@@ -33,6 +34,7 @@ def show_users_page():
                 try:
                     create_user(db, admin_id, username, email, password)
                     st.success("User created successfully")
+                    time.sleep(1.5)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
@@ -63,6 +65,7 @@ def show_users_page():
                 if target_user:
                     assign_role_to_user(db, admin_id, str(target_user["_id"]), selected_role)
                     st.success("Role assigned successfully")
+                    time.sleep(1.5)
                     st.rerun()
                 else:
                     st.error("Selected user not found.")

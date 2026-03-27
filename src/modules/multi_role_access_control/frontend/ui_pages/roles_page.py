@@ -1,4 +1,5 @@
 import streamlit as st
+import time
 
 from backend.database import get_db_connection
 from admin_service import (
@@ -42,6 +43,7 @@ def show_roles_page():
                             
                     create_role(db, admin_id, role_name, description, parent_role_id=parent_id)
                     st.success(f"Role '{role_name}' created successfully")
+                    time.sleep(1.5)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
@@ -70,6 +72,7 @@ def show_roles_page():
             try:
                 assign_permission_to_role(db, admin_id, selected_role, selected_permission)
                 st.success("Permission assigned successfully")
+                time.sleep(1.5)
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {str(e)}")
@@ -93,6 +96,7 @@ def show_roles_page():
                 if target_user:
                     revoke_role_from_user(db, admin_id, str(target_user["_id"]), revoke_role)
                     st.success(f"Role '{revoke_role}' revoked from '{revoke_user}'")
+                    time.sleep(1.5)
                     st.rerun()
             except Exception as e:
                 st.error(f"Error: {str(e)}")
@@ -131,6 +135,7 @@ def show_roles_page():
             try:
                 delete_role(db, admin_id, del_role_name)
                 st.success(f"Role '{del_role_name}' deleted successfully.")
+                time.sleep(1.5)
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {str(e)}")
