@@ -167,8 +167,8 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
                       target_role_id: str, start_time: datetime, end_time: datetime, 
                       reason: str, delegation_type: str = "Peer-to-Peer") -> str:
     """
-    Creates an active delegation between two users.
-    Validates ObjectIds robustly to comply with MongoDB $jsonSchema.
+    Creates a delegation request with Status='Pending'.
+    An Admin must approve it before it becomes Active.
     """
     delegation_doc = {
         "Delegator_id": ObjectId(delegator_id) if not isinstance(delegator_id, ObjectId) else delegator_id,
@@ -176,7 +176,7 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
         "Target_Role_id": ObjectId(target_role_id) if not isinstance(target_role_id, ObjectId) else target_role_id,
         "Delegation_type": delegation_type,
         "Reason": reason,
-        "Status": "Active",
+        "Status": "Pending",
         "Start_time": start_time,
         "End_time": end_time
     }
@@ -192,6 +192,36 @@ def revoke_delegation(db, admin_id: str, delegation_id: str) -> bool:
     result = db["delegations"].update_one(
         {"_id": safe_objectid(delegation_id)},
         {"$set": {"Status": "Revoked"}}
+    )
+    return result.modified_count > 0
+
+
+@audit_action(action="APPROVE_DELEGATION", target_entity="delegations")
+def approve_delegation(db, admin_id: str, delegation_id: str) -> bool:
+    """
+    Admin approves a Pending delegation, setting its status to Active.
+    """
+    if not _is_admin(db, admin_id):
+        raise PermissionError("Only Admins can approve delegations.")
+
+    result = db["delegations"].update_one(
+        {"_id": safe_objectid(delegation_id), "Status": "Pending"},
+        {"$set": {"Status": "Active"}}
+    )
+    return result.modified_count > 0
+
+
+@audit_action(action="REJECT_DELEGATION", target_entity="delegations")
+def reject_delegation(db, admin_id: str, delegation_id: str, reason: str = "") -> bool:
+    """
+    Admin rejects a Pending delegation, setting its status to Rejected.
+    """
+    if not _is_admin(db, admin_id):
+        raise PermissionError("Only Admins can reject delegations.")
+
+    result = db["delegations"].update_one(
+        {"_id": safe_objectid(delegation_id), "Status": "Pending"},
+        {"$set": {"Status": "Rejected", "Rejection_Reason": reason}}
     )
     return result.modified_count > 0
 

@@ -184,7 +184,7 @@ def render_privacy_and_consent():
                                                    target_entity=str(del_user["_id"]), status="SUCCESS", 
                                                    details={"delegatee": delegate_email, "delegation_id": req_id})
                                                    
-                                    st.success(f"Successfully granted temporary access to {delegate_email}.")
+                                    st.success(f"✅ Health proxy submitted for admin approval. Proxy ID: {req_id}")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Validation or Database Error: {e}")

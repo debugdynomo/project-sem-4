@@ -147,7 +147,7 @@ def _render_delegation_center(db, user_id):
                             reason,
                             delegation_type
                         )
-                        st.success(f"Delegation created (Active)! ID: {req_id}")
+                        st.success(f"✅ Delegation submitted for admin approval! Request ID: {req_id}")
                     except Exception as e:
                         st.error(f"Validation or Database Error: {e}")
 
@@ -165,9 +165,41 @@ def _render_delegation_center(db, user_id):
 
 def _render_approval_inbox(db, admin_id):
     st.markdown("### 📥 Delegation Approval Inbox")
-    st.info("As a Lead Doctor, review and approve delegation requests from your team.")
-    
-    st.info("Direct approval is no longer required in Module 41. All delegations are activated instantly based on user creation.")
+    st.info("As a Lead Doctor / Admin, review and approve delegation requests from your team.")
+
+    pending = admin_service.get_pending_delegations(db)
+
+    if not pending:
+        st.success("No pending delegation requests.")
+        return
+
+    for d in pending:
+        with st.container():
+            col1, col2, col3 = st.columns([4, 1, 1])
+            with col1:
+                st.markdown(f"**{d.get('Delegator_Name', 'Unknown')}** → **{d.get('Delegatee_Name', 'Unknown')}**")
+                st.caption(
+                    f"Role: {d.get('Target_Role_Name', 'N/A')} | "
+                    f"Type: {d.get('Delegation_type', 'N/A')} | "
+                    f"Reason: {d.get('Reason', 'N/A')}"
+                )
+            with col2:
+                if st.button("✅ Approve", key=f"approve_{d['_id']}"):
+                    try:
+                        admin_service.approve_delegation(db, admin_id=admin_id, delegation_id=str(d["_id"]))
+                        st.success("Delegation approved!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            with col3:
+                if st.button("❌ Reject", key=f"reject_{d['_id']}"):
+                    try:
+                        admin_service.reject_delegation(db, admin_id=admin_id, delegation_id=str(d["_id"]))
+                        st.warning("Delegation rejected.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            st.divider()
 
 
 def _render_audit_logs(db, user_id):

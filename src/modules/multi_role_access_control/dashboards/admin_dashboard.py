@@ -47,11 +47,13 @@ def show_admin_home(db):
         users_count = db.users.count_documents({}) if db is not None else 0
         roles_count = db.roles.count_documents({}) if db is not None else 0
         delegations_count = db.delegations.count_documents({"Status": "Active"}) if db is not None else 0
+        pending_count = db.delegations.count_documents({"Status": "Pending"}) if db is not None else 0
         audit_events = db.audit_logs.count_documents({}) if db is not None else 0
         
         with metric_cols[0]:
             st.metric("Total Users", users_count)
             st.metric("Active Delegations", delegations_count)
+            st.metric("⏳ Pending Approvals", pending_count)
         with metric_cols[1]:
             st.metric("Configured Roles", roles_count)
             st.metric("Security Events", audit_events)
