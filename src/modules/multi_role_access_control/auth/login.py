@@ -52,7 +52,9 @@ def login_page():
         # Calculate Primary Role strictly from MongoDB database to prevent UI override spoofing
         role = "Patient" # Fallback safety
         if user.get("Assigned_Roles") and len(user["Assigned_Roles"]) > 0:
-            role_doc = db["roles"].find_one({"_id": user["Assigned_Roles"][0]})
+            first_role = user["Assigned_Roles"][0]
+            r_id = first_role.get("role_id") if isinstance(first_role, dict) else first_role
+            role_doc = db["roles"].find_one({"_id": r_id})
             if role_doc:
                 role = role_doc.get("Role_name", "Patient")
 

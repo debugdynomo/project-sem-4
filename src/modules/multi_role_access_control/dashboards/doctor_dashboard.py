@@ -29,7 +29,7 @@ def doctor_dashboard():
     # This uses the recursive logic in rbac.py (get_active_roles)
     active_roles = get_active_roles(user_id, db)
     perms = get_effective_permissions(user_id, db)
-    is_lead_doctor = "Lead Doctor" in active_roles
+    is_lead_doctor = any(role in active_roles for role in ["Lead Doctor", "Lead_Doctor", "Admin", "System_Admin"])
     
     # 2. Sidebar Configuration
     menu_items = ["Clinical Overview", "My Permissions", "Delegation Center (G5)", "Patient Access Logs"]

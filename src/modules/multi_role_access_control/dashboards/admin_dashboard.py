@@ -6,6 +6,8 @@ from backend.database import get_db_connection
 from frontend.ui_pages.users_page import show_users_page
 from frontend.ui_pages.roles_page import show_roles_page
 from frontend.ui_pages.delegation_page import show_delegation_page
+from frontend.ui_pages.reviews_page import show_reviews_page
+from backend.override_tracker import get_active_overrides, resolve_emergency_override
 
 def admin_dashboard():
     db = get_db_connection()
@@ -29,6 +31,8 @@ def admin_dashboard():
         show_roles_page()
     elif selected == "Delegation Console (G5)":
         show_delegation_page()
+    elif selected == "Access Recertification":
+        show_reviews_page()
     elif selected == "System Audit":
         show_system_audit(db)
     else:
@@ -38,6 +42,20 @@ def show_admin_home(db):
     st.markdown("## 🏥 Admin Dashboard")
     st.markdown("Welcome to the Module 41 / G5 Access Control Center.")
     st.divider()
+    
+    overrides = get_active_overrides(db)
+    if overrides:
+        st.error("🚨 **ACTIVE EMERGENCY OVERRIDES DETECTED** 🚨")
+        for o in overrides:
+            col1, col2 = st.columns([4, 1])
+            user_doc = db["users"].find_one({"_id": o["user_id"]})
+            username = user_doc.get("Username") if user_doc else str(o["user_id"])
+            col1.write(f"**{username}** initiated break-glass access to **{o['overridden_system']}** at {o['timestamp']}")
+            col1.write(f"*Reason:* {o['reason']}")
+            if col2.button("Resolve", key=f"res_{o['_id']}"):
+                resolve_emergency_override(db, st.session_state.get("user_id"), str(o["_id"]))
+                st.rerun()
+        st.divider()
     
     col1, col2 = st.columns(2)
     with col1:

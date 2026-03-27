@@ -127,8 +127,8 @@ _VALIDATORS: Dict[str, dict] = {
                 "Status":          {"enum": ["Active", "Inactive", "Suspended"]},
                 "Assigned_Roles":  {
                     "bsonType": "array",
-                    "items": {"bsonType": "objectId"},
-                    "description": "Array of Role ObjectIds (Assigned_to M:N)",
+                    "items": {"bsonType": ["objectId", "object"]},
+                    "description": "Array of Role ObjectIds or Context Dicts (Assigned_to M:N)",
                 },
             },
         }

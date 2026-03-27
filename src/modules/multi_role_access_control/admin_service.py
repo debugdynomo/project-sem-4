@@ -56,18 +56,63 @@ def _is_admin(db, user_id: str) -> bool:
     user = db["users"].find_one({"_id": safe_objectid(user_id)})
     if not user:
         return False
-    for role_id in user.get("Assigned_Roles", []):
+    for role_item in user.get("Assigned_Roles", []):
+        if isinstance(role_item, dict):
+            valid_until = role_item.get("valid_until")
+            if valid_until and valid_until < datetime.utcnow():
+                continue
+            role_id = role_item.get("role_id")
+        else:
+            role_id = role_item # backward compatibility
+            
         role = db["roles"].find_one({"_id": safe_objectid(role_id)})
-        if role and role.get("Role_name") == "Admin":
+        if role and role.get("Role_name") in ["Admin", "System_Admin"]:
+            return True
+    return False
+
+def __can_approve_delegations(db, current_user_id: str) -> bool:
+    """Allows Admins OR Lead Doctors to approve delegations."""
+    if _is_admin(db, current_user_id):
+        return True
+    user = db["users"].find_one({"_id": safe_objectid(current_user_id)})
+    if not user: return False
+    for role_item in user.get("Assigned_Roles", []):
+        r_id = role_item.get("role_id") if isinstance(role_item, dict) else role_item
+        role = db["roles"].find_one({"_id": safe_objectid(r_id)})
+        if role and role.get("Role_name") in ["Lead Doctor", "Lead_Doctor"]:
             return True
     return False
 
 
+def check_role_conflicts(db, target_user_id: str, new_role: str):
+    user = db["users"].find_one({"_id": safe_objectid(target_user_id)})
+    if not user: return
+    
+    # Conflict matrix definition for demonstration
+    conflict_matrix = {
+        "Doctor": ["Patient"],
+        "Patient": ["Doctor", "Admin", "Lead Doctor", "Nurse"],
+        "Admin": ["Patient"]
+    }
+    
+    incompatible_roles = conflict_matrix.get(new_role, [])
+    
+    for r in user.get("Assigned_Roles", []):
+        if isinstance(r, dict):
+            r_id = r.get("role_id")
+        else:
+            r_id = r
+        role_doc = db["roles"].find_one({"_id": r_id})
+        if role_doc and role_doc.get("Role_name") in incompatible_roles:
+            raise ValueError(f"Conflict Error: Cannot assign '{new_role}' while user holds incompatible role '{role_doc.get('Role_name')}'.")
+
 @audit_action(action="ASSIGN_ROLE", target_entity="users")
-def assign_role_to_user(db, admin_id: str, target_user_id: str, new_role: str) -> bool:
+def assign_role_to_user(db, admin_id: str, target_user_id: str, new_role: str, context: dict = None, valid_until: datetime = None) -> bool:
     """
     P5 Admin Capability: Appends a static role to a target user.
     """
+    check_role_conflicts(db, target_user_id, new_role)
+
     if not _is_admin(db, admin_id):
         raise PermissionError("Access Denied: Only Admins can execute role bindings.")
 
@@ -76,9 +121,17 @@ def assign_role_to_user(db, admin_id: str, target_user_id: str, new_role: str) -
     if not role_doc:
         raise ValueError(f"Role '{new_role}' does not exist.")
 
+    role_assignment = {
+        "role_id": role_doc["_id"]
+    }
+    if context:
+        role_assignment["context"] = context
+    if valid_until:
+        role_assignment["valid_until"] = valid_until
+
     result = db["users"].update_one(
         {"_id": safe_objectid(target_user_id)},
-        {"$addToSet": {"Assigned_Roles": role_doc["_id"]}}
+        {"$addToSet": {"Assigned_Roles": role_assignment}}
     )
     return result.modified_count > 0
 
@@ -94,9 +147,26 @@ def revoke_role_from_user(db, admin_id: str, target_user_id: str, target_role: s
     if not role_doc:
         raise ValueError(f"Role '{target_role}' does not exist.")
 
+    user = db["users"].find_one({"_id": safe_objectid(target_user_id)})
+    if not user: return False
+    
+    new_roles = []
+    modified = False
+    for r in user.get("Assigned_Roles", []):
+        if isinstance(r, dict) and r.get("role_id") == role_doc["_id"]:
+            modified = True
+            continue
+        if r == role_doc["_id"]:
+            modified = True
+            continue
+        new_roles.append(r)
+        
+    if not modified:
+        return False
+
     result = db["users"].update_one(
         {"_id": safe_objectid(target_user_id)},
-        {"$pull": {"Assigned_Roles": role_doc["_id"]}}
+        {"$set": {"Assigned_Roles": new_roles}}
     )
     return result.modified_count > 0
 
@@ -107,14 +177,14 @@ def get_all_permissions(db) -> list:
     return list(db["permissions"].find({}))
 
 @audit_action(action="CREATE_ROLE", target_entity="roles")
-def create_role(db, admin_id: str, role_name: str, description: str, parent_role_id=None) -> str:
+def create_role(db, admin_id: str, role_name: str, description: str, level: int = 5, parent_role_id=None) -> str:
     if not _is_admin(db, admin_id):
         raise PermissionError("Only Admins can create roles.")
     
     role_doc = {
         "Role_name": role_name,
         "Description": description,
-        "Level": 1,
+        "Level": int(level),
         "Parent_Role_id": safe_objectid(parent_role_id),
         "Permissions": []
     }
@@ -170,10 +240,65 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
     Creates a delegation request with Status='Pending'.
     An Admin must approve it before it becomes Active.
     """
+    if delegation_type not in ["Hierarchical", "Peer-to-Peer", "Emergency"]:
+        raise ValueError("Invalid delegation_type. Must be Hierarchical, Peer-to-Peer, or Emergency")
+
+    delegator = db["users"].find_one({"_id": safe_objectid(delegator_id)})
+    delegatee = db["users"].find_one({"_id": safe_objectid(delegatee_id)})
+    if not delegator or not delegatee:
+        raise ValueError("Delegator or Delegatee not found.")
+
+    target_role_doc = db["roles"].find_one({"_id": safe_objectid(target_role_id)})
+    if not target_role_doc:
+        raise ValueError("Target role not found.")
+
+    target_role_id_obj = target_role_doc["_id"]
+
+    # Validation: Ownership & Level Check
+    owns_role = False
+    delegator_best_level = 99
+    for r in delegator.get("Assigned_Roles", []):
+        r_id = r.get("role_id") if isinstance(r, dict) else r
+        r_doc = db["roles"].find_one({"_id": safe_objectid(r_id)})
+        if r_doc:
+            if r_doc["_id"] == target_role_id_obj:
+                owns_role = True
+            level = r_doc.get("Level", 99)
+            if level < delegator_best_level:
+                delegator_best_level = level
+    
+    delegatee_best_level = 99
+    for r in delegatee.get("Assigned_Roles", []):
+        r_id = r.get("role_id") if isinstance(r, dict) else r
+        r_doc = db["roles"].find_one({"_id": safe_objectid(r_id)})
+        if r_doc:
+            level = r_doc.get("Level", 99)
+            if level < delegatee_best_level:
+                delegatee_best_level = level
+
+    if not owns_role and delegation_type != "Emergency":
+        raise PermissionError(f"Delegator does not possess the target role.")
+
+    if delegation_type == "Peer-to-Peer" and delegator_best_level != delegatee_best_level:
+        raise PermissionError(f"Peer-to-Peer delegation requires equal role levels (Delegator Rank: {delegator_best_level}, Delegatee Rank: {delegatee_best_level}).")
+    elif delegation_type == "Hierarchical" and delegator_best_level >= delegatee_best_level:
+        raise PermissionError(f"Hierarchical delegation requires Delegator to be a higher rank than Delegatee (Delegator Rank: {delegator_best_level}, Delegatee Rank: {delegatee_best_level}). Note: Lower number = Higher rank.")
+
+    # Prevent duplicate delegations
+    existing = db["delegations"].find_one({
+        "Delegator_id": safe_objectid(delegator_id),
+        "Delegatee_id": safe_objectid(delegatee_id),
+        "Target_Role_id": safe_objectid(target_role_id),
+        "Status": {"$in": ["Pending", "Active"]}
+    })
+    
+    if existing:
+        raise ValueError("A pending or active delegation already exists for this role between these users.")
+
     delegation_doc = {
-        "Delegator_id": ObjectId(delegator_id) if not isinstance(delegator_id, ObjectId) else delegator_id,
-        "Delegatee_id": ObjectId(delegatee_id) if not isinstance(delegatee_id, ObjectId) else delegatee_id,
-        "Target_Role_id": ObjectId(target_role_id) if not isinstance(target_role_id, ObjectId) else target_role_id,
+        "Delegator_id": safe_objectid(delegator_id),
+        "Delegatee_id": safe_objectid(delegatee_id),
+        "Target_Role_id": safe_objectid(target_role_id),
         "Delegation_type": delegation_type,
         "Reason": reason,
         "Status": "Pending",
@@ -199,10 +324,10 @@ def revoke_delegation(db, admin_id: str, delegation_id: str) -> bool:
 @audit_action(action="APPROVE_DELEGATION", target_entity="delegations")
 def approve_delegation(db, admin_id: str, delegation_id: str) -> bool:
     """
-    Admin approves a Pending delegation, setting its status to Active.
+    Approves a Pending delegation, setting its status to Active.
     """
-    if not _is_admin(db, admin_id):
-        raise PermissionError("Only Admins can approve delegations.")
+    if not __can_approve_delegations(db, admin_id):
+        raise PermissionError("Only Admins or Lead Doctors can approve delegations.")
 
     result = db["delegations"].update_one(
         {"_id": safe_objectid(delegation_id), "Status": "Pending"},
@@ -214,10 +339,10 @@ def approve_delegation(db, admin_id: str, delegation_id: str) -> bool:
 @audit_action(action="REJECT_DELEGATION", target_entity="delegations")
 def reject_delegation(db, admin_id: str, delegation_id: str, reason: str = "") -> bool:
     """
-    Admin rejects a Pending delegation, setting its status to Rejected.
+    Rejects a Pending delegation, setting its status to Rejected.
     """
-    if not _is_admin(db, admin_id):
-        raise PermissionError("Only Admins can reject delegations.")
+    if not __can_approve_delegations(db, admin_id):
+        raise PermissionError("Only Admins or Lead Doctors can reject delegations.")
 
     result = db["delegations"].update_one(
         {"_id": safe_objectid(delegation_id), "Status": "Pending"},

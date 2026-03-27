@@ -63,7 +63,17 @@ def get_effective_permissions(user_id, db):
             "$project": {
                 "combined_roles": {
                     "$setUnion": [
-                        "$Assigned_Roles",
+                        {"$map": {
+                            "input": "$Assigned_Roles",
+                            "as": "r",
+                            "in": {
+                                "$cond": {
+                                    "if": {"$eq": [{"$type": "$$r"}, "object"]},
+                                    "then": "$$r.role_id",
+                                    "else": "$$r"
+                                }
+                            }
+                        }},
                         {"$map": {"input": "$Active_Delegations", "as": "d", "in": "$$d.Target_Role_id"}}
                     ]
                 }
@@ -196,7 +206,17 @@ def get_active_roles(user_id, db):
             "$project": {
                 "combined_roles": {
                     "$setUnion": [
-                        "$Assigned_Roles",
+                        {"$map": {
+                            "input": "$Assigned_Roles",
+                            "as": "r",
+                            "in": {
+                                "$cond": {
+                                    "if": {"$eq": [{"$type": "$$r"}, "object"]},
+                                    "then": "$$r.role_id",
+                                    "else": "$$r"
+                                }
+                            }
+                        }},
                         {"$map": {"input": "$Active_Delegations", "as": "d", "in": "$$d.Target_Role_id"}}
                     ]
                 }

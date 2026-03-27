@@ -30,6 +30,7 @@ def show_roles_page():
             parent_role_name = st.selectbox("Parent Role (Inheritance)", parent_role_names)
         with col2:
             description = st.text_input("Description")
+            role_level = st.number_input("Hierarchy Level (1=Admin, 5=Patient)", min_value=1, max_value=10, value=4)
 
         submitted = st.form_submit_button("Create Role")
         if submitted:
@@ -41,7 +42,7 @@ def show_roles_page():
                         if parent_doc:
                             parent_id = str(parent_doc["_id"])
                             
-                    create_role(db, admin_id, role_name, description, parent_role_id=parent_id)
+                    create_role(db, admin_id, role_name, description, level=role_level, parent_role_id=parent_id)
                     st.success(f"Role '{role_name}' created successfully")
                     time.sleep(1.5)
                     st.rerun()

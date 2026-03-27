@@ -50,7 +50,9 @@ if not st.session_state.logged_in and not st.session_state._logged_out:
                     # Resolve role from DB
                     role = "Patient"  # fallback
                     if user.get("Assigned_Roles") and len(user["Assigned_Roles"]) > 0:
-                        role_doc = db["roles"].find_one({"_id": user["Assigned_Roles"][0]})
+                        first_role = user["Assigned_Roles"][0]
+                        r_id = first_role.get("role_id") if isinstance(first_role, dict) else first_role
+                        role_doc = db["roles"].find_one({"_id": r_id})
                         if role_doc:
                             role = role_doc.get("Role_name", "Patient")
 

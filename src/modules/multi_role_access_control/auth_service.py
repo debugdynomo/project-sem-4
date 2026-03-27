@@ -25,11 +25,16 @@ def login_user(db, username: str, password_attempt: str) -> Optional[dict]:
     if stored_hash != attempt_hash:
         return None
 
+    assigned_roles_normalized = []
+    for r in user.get("Assigned_Roles", []):
+        r_id = r.get("role_id") if isinstance(r, dict) else r
+        assigned_roles_normalized.append(r_id)
+
     # Build session context
     session_context = {
         "user_id": str(user["_id"]),
         "username": user.get("Username"),
-        "assigned_roles": user.get("Assigned_Roles", []),
+        "assigned_roles": assigned_roles_normalized,
         "status": user.get("Status"),
         "login_time": datetime.now(timezone.utc).isoformat(),
     }

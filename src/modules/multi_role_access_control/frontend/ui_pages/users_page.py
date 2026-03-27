@@ -87,7 +87,8 @@ def show_users_page():
             # Map assigned roles from ObjectIds to Names
             assigned_roles_ids = u.get("Assigned_Roles", [])
             assigned_roles_names = []
-            for rid in assigned_roles_ids:
+            for item in assigned_roles_ids:
+                rid = item.get("role_id") if isinstance(item, dict) else item
                 role_doc = next((r for r in roles if str(r["_id"]) == str(rid)), None)
                 if role_doc:
                     assigned_roles_names.append(role_doc.get("Role_name", str(rid)))
