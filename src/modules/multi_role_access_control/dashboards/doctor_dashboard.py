@@ -13,8 +13,9 @@ if parent_dir not in sys.path:
 
 from components.sidebar import sidebar
 from backend.database import get_db_connection
-from backend.rbac import get_effective_permissions, get_active_roles
+from backend.rbac import get_effective_permissions, get_active_roles, get_user_contexts
 import admin_service
+from backend.override_tracker import log_emergency_override
 
 def doctor_dashboard():
     # 1. Setup & Auth
@@ -32,7 +33,7 @@ def doctor_dashboard():
     is_lead_doctor = any(role in active_roles for role in ["Lead Doctor", "Lead_Doctor", "Admin", "System_Admin"])
     
     # 2. Sidebar Configuration
-    menu_items = ["Clinical Overview", "My Permissions", "Delegation Center (G5)", "Patient Access Logs"]
+    menu_items = ["Clinical Overview", "My Permissions", "Delegation Center (G5)", "Emergency Break-Glass", "Patient Access Logs"]
     if is_lead_doctor:
         menu_items.insert(2, "Approve Delegations")  # Add after "My Permissions" or anywhere logic
         
@@ -62,6 +63,10 @@ def doctor_dashboard():
         st.subheader("My Effective Permissions")
         st.markdown("Based on your assigned roles and active delegations (Recursive Inheritance):")
         
+        contexts = get_user_contexts(user_id, db)
+        if contexts:
+            st.info(f"📍 **Active Context Restrictions:** {', '.join(contexts)}")
+            
         if perms:
             df_perms = pd.DataFrame(perms, columns=["Permission Code"])
             st.dataframe(df_perms, use_container_width=True)
@@ -73,6 +78,9 @@ def doctor_dashboard():
 
     elif selected_page == "Delegation Center (G5)":
         _render_delegation_center(db, user_id)
+
+    elif selected_page == "Emergency Break-Glass":
+        _render_emergency_override(db, user_id)
 
     elif selected_page == "Approve Delegations":
         if not is_lead_doctor:
@@ -219,4 +227,25 @@ def _render_audit_logs(db, user_id):
         st.dataframe(df[["Action", "Target_Entity", "Timestamp", "Status", "Details"]], use_container_width=True)
     else:
         st.info("No audit logs found for your account.")
+
+def _render_emergency_override(db, user_id):
+    st.markdown("### 🚨 Emergency Break-Glass Override")
+    st.error("WARNING: Use of this tool grants temporary uninhibited access to a target system or patient file. All actions are heavily audited and trigger immediate administrative alerts.")
+    
+    with st.form("break_glass_form"):
+        target_system = st.text_input("Target System / Patient ID to Override", placeholder="e.g. PATIENT-99214")
+        reason = st.text_area("Justification (Required)", placeholder="Describe the life-safety or clinical emergency...")
+        duration = st.number_input("Duration (Hours)", min_value=1, max_value=24, value=2)
+        
+        submitted = st.form_submit_button("🚨 ACTIVATE EMERGENCY ACCESS 🚨", type="primary")
+        
+        if submitted:
+            if not target_system or not reason:
+                st.warning("Please provide both the Target System and a valid Justification.")
+            else:
+                try:
+                    log_id = log_emergency_override(db, user_id, target_system, reason, int(duration))
+                    st.success(f"Emergency Override Activated. ID: {log_id}. Administrators have been notified.")
+                except Exception as e:
+                    st.error(f"Error activating override: {e}")
 

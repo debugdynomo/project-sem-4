@@ -64,7 +64,19 @@ def get_effective_permissions(user_id, db):
                 "combined_roles": {
                     "$setUnion": [
                         {"$map": {
-                            "input": "$Assigned_Roles",
+                            "input": {
+                                "$filter": {
+                                    "input": "$Assigned_Roles",
+                                    "as": "r",
+                                    "cond": {
+                                        "$or": [
+                                            {"$ne": [{"$type": "$$r"}, "object"]},
+                                            {"$eq": [{"$type": "$$r.valid_until"}, "missing"]},
+                                            {"$gt": ["$$r.valid_until", "$$NOW"]}
+                                        ]
+                                    }
+                                }
+                            },
                             "as": "r",
                             "in": {
                                 "$cond": {
@@ -207,7 +219,19 @@ def get_active_roles(user_id, db):
                 "combined_roles": {
                     "$setUnion": [
                         {"$map": {
-                            "input": "$Assigned_Roles",
+                            "input": {
+                                "$filter": {
+                                    "input": "$Assigned_Roles",
+                                    "as": "r",
+                                    "cond": {
+                                        "$or": [
+                                            {"$ne": [{"$type": "$$r"}, "object"]},
+                                            {"$eq": [{"$type": "$$r.valid_until"}, "missing"]},
+                                            {"$gt": ["$$r.valid_until", "$$NOW"]}
+                                        ]
+                                    }
+                                }
+                            },
                             "as": "r",
                             "in": {
                                 "$cond": {
@@ -261,3 +285,51 @@ def get_active_roles(user_id, db):
         return []
     
     return result[0].get("All_Role_Names", [])
+
+def get_user_contexts(user_id, db):
+    """
+    Extracts all context tags/data assigned to the user's active roles.
+    """
+    if db is None: return []
+    if isinstance(user_id, str):
+        try: user_id = ObjectId(user_id)
+        except InvalidId: return []
+    elif not isinstance(user_id, ObjectId): return []
+
+    pipeline = [
+        {"$match": {"_id": user_id}},
+        {"$project": {"Assigned_Roles": {"$ifNull": ["$Assigned_Roles", []]}}},
+        {"$project": {
+            "contexts": {
+                "$map": {
+                    "input": {
+                        "$filter": {
+                            "input": "$Assigned_Roles",
+                            "as": "r",
+                            "cond": {
+                                "$and": [
+                                    {"$eq": [{"$type": "$$r"}, "object"]},
+                                    {"$or": [
+                                        {"$eq": [{"$type": "$$r.valid_until"}, "missing"]},
+                                        {"$gt": ["$$r.valid_until", "$$NOW"]}
+                                    ]},
+                                    {"$ne": [{"$type": "$$r.context"}, "missing"]}
+                                ]
+                            }
+                        }
+                    },
+                    "as": "r",
+                    "in": "$$r.context"
+                }
+            }
+        }}
+    ]
+    res = list(db.users.aggregate(pipeline))
+    if not res: return []
+    contexts = res[0].get("contexts", [])
+    
+    tags = []
+    for c in contexts:
+        if isinstance(c, dict) and "tags" in c:
+            tags.extend(c["tags"])
+    return list(set(tags))

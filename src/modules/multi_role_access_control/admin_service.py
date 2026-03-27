@@ -257,9 +257,20 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
     # Validation: Ownership & Level Check
     owns_role = False
     delegator_best_level = 99
-    for r in delegator.get("Assigned_Roles", []):
-        r_id = r.get("role_id") if isinstance(r, dict) else r
-        r_doc = db["roles"].find_one({"_id": safe_objectid(r_id)})
+    
+    # Fetch active delegations for delegator
+    del_active_cursor = db["delegations"].find({
+        "Delegatee_id": safe_objectid(delegator_id),
+        "Status": "Active",
+        "Start_time": {"$lte": datetime.utcnow()},
+        "End_time": {"$gt": datetime.utcnow()}
+    })
+    delegator_roles = [safe_objectid(r.get("role_id") if isinstance(r, dict) else r) for r in delegator.get("Assigned_Roles", [])]
+    for d in del_active_cursor:
+        delegator_roles.append(safe_objectid(d["Target_Role_id"]))
+
+    for r_id in set(delegator_roles):
+        r_doc = db["roles"].find_one({"_id": r_id})
         if r_doc:
             if r_doc["_id"] == target_role_id_obj:
                 owns_role = True
@@ -268,9 +279,18 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
                 delegator_best_level = level
     
     delegatee_best_level = 99
-    for r in delegatee.get("Assigned_Roles", []):
-        r_id = r.get("role_id") if isinstance(r, dict) else r
-        r_doc = db["roles"].find_one({"_id": safe_objectid(r_id)})
+    delegatee_active_cursor = db["delegations"].find({
+        "Delegatee_id": safe_objectid(delegatee_id),
+        "Status": "Active",
+        "Start_time": {"$lte": datetime.utcnow()},
+        "End_time": {"$gt": datetime.utcnow()}
+    })
+    delegatee_roles = [safe_objectid(r.get("role_id") if isinstance(r, dict) else r) for r in delegatee.get("Assigned_Roles", [])]
+    for d in delegatee_active_cursor:
+        delegatee_roles.append(safe_objectid(d["Target_Role_id"]))
+
+    for r_id in set(delegatee_roles):
+        r_doc = db["roles"].find_one({"_id": r_id})
         if r_doc:
             level = r_doc.get("Level", 99)
             if level < delegatee_best_level:

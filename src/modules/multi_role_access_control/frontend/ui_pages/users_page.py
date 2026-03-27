@@ -56,14 +56,27 @@ def show_users_page():
         col1, col2 = st.columns(2)
         with col1:
             selected_user = st.selectbox("Select User", user_names)
+            context_tags_str = st.text_input("Context Tags (Comma Separated)", placeholder="e.g. Cardiology, Wing-B")
         with col2:
             selected_role = st.selectbox("Select Role", role_names)
+            valid_until = st.date_input("Valid Until (Optional, leave blank for permanent)", value=None)
 
         if st.button("Assign Role"):
             try:
                 target_user = next((u for u in users if u.get("Username") == selected_user), None)
                 if target_user:
-                    assign_role_to_user(db, admin_id, str(target_user["_id"]), selected_role)
+                    context = None
+                    if context_tags_str:
+                        tags = [t.strip() for t in context_tags_str.split(",") if t.strip()]
+                        if tags:
+                            context = {"tags": tags}
+                    
+                    vu = None
+                    if valid_until:
+                        import datetime
+                        vu = datetime.datetime.combine(valid_until, datetime.datetime.min.time())
+
+                    assign_role_to_user(db, admin_id, str(target_user["_id"]), selected_role, context=context, valid_until=vu)
                     st.success("Role assigned successfully")
                     time.sleep(1.5)
                     st.rerun()
