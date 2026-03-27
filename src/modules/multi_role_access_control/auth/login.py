@@ -1,16 +1,21 @@
 """
 auth/login.py — Streamlit login page wired to MongoDB backend.
+Sets user_id cookie on successful login for persistent sessions.
 """
 import hashlib
 
 import streamlit as st
+import extra_streamlit_components as stx
 from backend.database import get_db_connection
 from backend.audit import log_audit_event
 from backend.rbac import get_effective_permissions
 
 
+
 def login_page():
     st.title("🏥 MediCare Login")
+
+    cookie_manager = stx.CookieManager(key="login_cookies")
 
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
@@ -57,6 +62,10 @@ def login_page():
         st.session_state.username = user.get("Username")
         st.session_state.permissions = perms
         st.session_state.page = "dashboard"
+        st.session_state._logged_out = False
+
+        # ---- PERSIST LOGIN TO COOKIE ----
+        cookie_manager.set("user_id", str(user["_id"]))
 
         log_audit_event(db, action="LOGIN_SUCCESS", user_id=str(user["_id"]),
                         target_entity="auth", status="SUCCESS")
