@@ -104,6 +104,41 @@ def show_roles_page():
 
     st.divider()
 
+    st.subheader("Permission Matrix")
+    st.write("Overview of all roles and their effective (inherited) permissions.")
+    
+    if roles and permissions:
+        import pandas as pd
+        matrix_data = []
+        for r in roles:
+            row = {"Role Name": r.get("Role_name")}
+            
+            def get_all_perms(role_doc):
+                perms = set(str(pid) for pid in role_doc.get("Permissions", []))
+                parent_id = role_doc.get("Parent_Role_id")
+                visited = set([str(role_doc["_id"])])
+                while parent_id and str(parent_id) not in visited:
+                    visited.add(str(parent_id))
+                    parent_doc = next((pr for pr in roles if str(pr["_id"]) == str(parent_id)), None)
+                    if parent_doc:
+                        perms.update(str(pid) for pid in parent_doc.get("Permissions", []))
+                        parent_id = parent_doc.get("Parent_Role_id")
+                    else:
+                        break
+                return perms
+
+            role_perm_ids = get_all_perms(r)
+
+            for p in permissions:
+                has_perm = str(p["_id"]) in role_perm_ids
+                row[p.get("Permission_name")] = "✅" if has_perm else "❌"
+            matrix_data.append(row)
+            
+        matrix_df = pd.DataFrame(matrix_data)
+        st.dataframe(matrix_df, use_container_width=True)
+
+    st.divider()
+
     st.subheader("All Roles")
 
     if roles:

@@ -83,3 +83,36 @@ def revoke_access_review(db, admin_id: str, campaign_id: str, user_id: str, role
 
 def get_active_campaigns(db) -> list:
     return list(db["access_reviews"].find({"status": "Active"}).sort("created_at", -1))
+
+@audit_action(action="PROCESS_EXPIRED_CAMPAIGNS", target_entity="access_reviews")
+def process_expired_campaigns(db, system_admin_id: str) -> int:
+    """
+    Finds active campaigns past their deadline. For any 'Pending' reviews,
+    automatically revokes the user's role and marks the campaign as 'Completed'.
+    Returns the number of campaigns processed.
+    """
+    now = datetime.utcnow()
+    expired_campaigns = list(db["access_reviews"].find(
+        {"status": "Active", "deadline": {"$lt": now}}
+    ))
+    
+    processed = 0
+    for c in expired_campaigns:
+        campaign_id = str(c["_id"])
+        
+        for r in c.get("reviews", []):
+            if r.get("status") == "Pending":
+                # Auto-revoke
+                try:
+                    revoke_access_review(db, system_admin_id, campaign_id, str(r["user_id"]), str(r["role_id"]))
+                except Exception:
+                    pass
+        
+        # Mark campaign as Completed
+        db["access_reviews"].update_one(
+            {"_id": safe_objectid(campaign_id)},
+            {"$set": {"status": "Completed"}}
+        )
+        processed += 1
+        
+    return processed

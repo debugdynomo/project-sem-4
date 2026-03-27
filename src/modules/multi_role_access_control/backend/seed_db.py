@@ -1,14 +1,23 @@
+import sys
+import os
+from datetime import datetime, timedelta
+from bson import ObjectId
+
+# Add the project root to sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from backend.database import init_db
 
 def seed_db():
     db = init_db()
-    print("Seeding database...")
+    print("🚀 Resetting database and seeding fresh test data...")
 
-    # Clear existing data for an idempotency
-    db.users.delete_many({})
-    db.roles.delete_many({})
-    db.permissions.delete_many({})
-    db.audit_logs.delete_many({})
+    # Clear existing data for a total reset
+    collections = ["users", "roles", "permissions", "delegations", "audit_logs", "overrides", "access_reviews"]
+    for coll in collections:
+        db[coll].delete_many({})
+    
+    print(f"🗑️  Cleared {len(collections)} collections.")
 
     # 1. Base Permissions
     perms = [
@@ -21,29 +30,18 @@ def seed_db():
         {"Permission_name": "APPROVE_DELEGATION", "Description": "Can approve temporary access"}
     ]
     
-    result = db.permissions.insert_many(perms)
+    db.permissions.insert_many(perms)
     perm_map = {p["Permission_name"]: p["_id"] for p in db.permissions.find()}
-    print(f"Instantiated {len(result.inserted_ids)} Permissions.")
+    print(f"✅ Instantiated {len(perms)} Permissions.")
 
-    # 2. Roles (Hierarchical)
-    # Note: Insert in order of dependency so we can grab ObjectIds
+    # 2. Roles (Logical Hierarchy)
     
-    # Patient Role
-    patient_role = {
-        "Role_name": "Patient",
-        "Description": "Standard Patient Access",
-        "Level": 5,
-        "Parent_Role_id": None,
-        "Permissions": [perm_map["READ_PATIENT_DATA"], perm_map["REQUEST_DELEGATION"]]
-    }
-    patient_id = db.roles.insert_one(patient_role).inserted_id
-
-    # Doctor Role
+    # Doctor Role (Base clinical)
     doctor_role = {
         "Role_name": "Doctor",
-        "Description": "Standard Doctor Access",
+        "Description": "Standard clinical access",
         "Level": 3,
-        "Parent_Role_id": None, # Doctors don't inherit patient permissions because they have different views
+        "Parent_Role_id": None,
         "Permissions": [perm_map["READ_PATIENT_DATA"], perm_map["EDIT_PATIENT_DATA"], perm_map["REQUEST_DELEGATION"]]
     }
     doctor_id = db.roles.insert_one(doctor_role).inserted_id
@@ -51,54 +49,102 @@ def seed_db():
     # Lead Doctor Role (Inherits from Doctor)
     lead_doctor_role = {
         "Role_name": "Lead_Doctor",
-        "Description": "Senior Doctor Access",
+        "Description": "Senior clinical lead with approval authority",
         "Level": 2,
-        "Parent_Role_id": doctor_id, # INHERITANCE HAPPENS HERE
-        "Permissions": [perm_map["APPROVE_DELEGATION"]] # Inherits EDIT and READ from Doctor
+        "Parent_Role_id": doctor_id,
+        "Permissions": [perm_map["APPROVE_DELEGATION"]]
     }
     lead_doctor_id = db.roles.insert_one(lead_doctor_role).inserted_id
 
-    # Admin Role
+    # Admin Role (Independent administrative role)
     admin_role = {
         "Role_name": "Admin",
-        "Description": "Superuser Access",
+        "Description": "System administrative access",
         "Level": 1,
-        "Parent_Role_id": lead_doctor_id, # Top level inherits EVERYTHING
-        "Permissions": [perm_map["CREATE_USER"], perm_map["VIEW_AUDIT_LOGS"], perm_map["DELETE_PATIENT_DATA"]]
+        "Parent_Role_id": None, # Admin is separate from Clinical hierarchy
+        "Permissions": list(perm_map.values())  # Superuser: all permissions
     }
     admin_id = db.roles.insert_one(admin_role).inserted_id
-    print("Instantiated 4 Roles with Hierarchy.")
+    
+    print("✅ Instantiated roles: Doctor -> Lead_Doctor (Inheritance) and Admin (Independent).")
 
     # 3. Test Users
-    # Note: Hashed passwords should use a library like bcrypt or passlib in production
-    users = [
+    # Password set to "password123" (sha256)
+    hashed_pw = "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f"
+    
+    users_data = [
         {
             "Username": "admin_alice",
             "Email": "alice@hospital.com",
-            # sha256 for "password123"
-            "Hashed_password": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
+            "Hashed_password": hashed_pw,
             "Status": "Active",
-            "Assigned_Roles": [admin_id]
+            "Assigned_Roles": [admin_id, lead_doctor_id] # MULTI-ROLE: Alice is both Admin and a Lead Doctor
         },
         {
             "Username": "dr_bob",
             "Email": "bob@hospital.com",
-            "Hashed_password": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
+            "Hashed_password": hashed_pw,
             "Status": "Active",
             "Assigned_Roles": [doctor_id]
         },
         {
             "Username": "lead_dr_charlie",
             "Email": "charlie@hospital.com",
-            "Hashed_password": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
+            "Hashed_password": hashed_pw,
             "Status": "Active",
             "Assigned_Roles": [lead_doctor_id]
         }
     ]
     
-    db.users.insert_many(users)
-    print("Instantiated 3 Test Users.")
-    print("Database seeding complete!")
+    db.users.insert_many(users_data)
+    print("✅ Instantiated 3 users with Multi-Role proof-of-concept.")
+
+    # 4. Advanced Test Cases (G5 Module 41 Specific)
+    now = datetime.utcnow()
+    alice = db.users.find_one({"Username": "admin_alice"})
+    bob = db.users.find_one({"Username": "dr_bob"})
+    charlie = db.users.find_one({"Username": "lead_dr_charlie"})
+
+    # A. Delegation: Bob (Doctor) delegates to Charlie (Lead Doctor)
+    db.delegations.insert_one({
+        "Delegator_id": bob["_id"],
+        "Delegatee_id": charlie["_id"],
+        "Target_Role_id": doctor_id,
+        "Delegation_type": "Peer-to-Peer",
+        "Reason": "Conference attendance coverage",
+        "Status": "Active",
+        "Start_time": now - timedelta(hours=1),
+        "End_time": now + timedelta(days=2)
+    })
+
+    # B. Break-Glass Override
+    db.overrides.insert_one({
+        "user_id": bob["_id"],
+        "overridden_system": "HIGH-RISK-DATABASE-01",
+        "reason": "Emergency triage during system outage",
+        "timestamp": now - timedelta(minutes=30),
+        "duration_hours": 2,
+        "status": "Active Alert",
+        "resolved": False,
+        "resolved_by": None,
+        "resolved_at": None
+    })
+
+    # C. Access Review Campaign
+    db.access_reviews.insert_one({
+        "title": "Hospital Compliance Review Q1",
+        "deadline": now + timedelta(days=3),
+        "created_by": alice["_id"],
+        "created_at": now - timedelta(hours=5),
+        "status": "Active",
+        "reviews": [
+            {"user_id": bob["_id"], "role_id": doctor_id, "status": "Pending", "reviewed_by": None, "review_date": None},
+            {"user_id": charlie["_id"], "role_id": lead_doctor_id, "status": "Pending", "reviewed_by": None, "review_date": None}
+        ]
+    })
+
+    print("✅ Seeded delegations, overrides, and review campaigns.")
+    print("✨ Database reset and seeding complete!")
 
 if __name__ == "__main__":
     seed_db()

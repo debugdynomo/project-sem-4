@@ -315,6 +315,41 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
     if existing:
         raise ValueError("A pending or active delegation already exists for this role between these users.")
 
+    # Duration limit check
+    duration = end_time - start_time
+    if delegation_type == "Emergency" and duration > timedelta(days=1):
+        raise ValueError("Emergency delegations cannot exceed 24 hours.")
+    elif delegation_type == "Peer-to-Peer" and duration > timedelta(days=7):
+        raise ValueError("Peer-to-Peer delegations cannot exceed 7 days.")
+    elif delegation_type == "Hierarchical" and duration > timedelta(days=30):
+        raise ValueError("Hierarchical delegations cannot exceed 30 days.")
+
+    # Cycle detection
+    cycle_check = list(db["delegations"].aggregate([
+        {"$match": {"Delegator_id": safe_objectid(delegatee_id), "Status": "Active"}},
+        {"$graphLookup": {
+            "from": "delegations",
+            "startWith": "$Delegatee_id",
+            "connectFromField": "Delegatee_id",
+            "connectToField": "Delegator_id",
+            "as": "chain",
+            "restrictSearchWithMatch": {"Status": "Active"}
+        }}
+    ]))
+    
+    is_cycle = False
+    for doc in cycle_check:
+        if doc["Delegatee_id"] == safe_objectid(delegator_id):
+            is_cycle = True
+            break
+        for chain_link in doc.get("chain", []):
+            if chain_link["Delegatee_id"] == safe_objectid(delegator_id):
+                is_cycle = True
+                break
+                
+    if is_cycle:
+        raise ValueError("Cyclic delegation detected. This action would create an infinite delegation loop.")
+
     delegation_doc = {
         "Delegator_id": safe_objectid(delegator_id),
         "Delegatee_id": safe_objectid(delegatee_id),
@@ -411,3 +446,33 @@ def get_active_delegations(db) -> list:
         enriched.append(d)
     return enriched
 
+@audit_action(action="CLEANUP_EXPIRED_ROLES", target_entity="users")
+def cleanup_expired_roles(db, system_admin_id: str) -> int:
+    """
+    Scans all users and removes Assigned_Roles objects whose 'valid_until' is in the past.
+    Returns the number of users modified.
+    """
+    now = datetime.utcnow()
+    users = db["users"].find({})
+    
+    modified_count = 0
+    for u in users:
+        assigned = u.get("Assigned_Roles", [])
+        new_roles = []
+        has_expired = False
+        
+        for r in assigned:
+            if isinstance(r, dict) and "valid_until" in r:
+                if r["valid_until"] < now:
+                    has_expired = True
+                    continue  # drop it
+            new_roles.append(r)
+            
+        if has_expired:
+            db["users"].update_one(
+                {"_id": u["_id"]},
+                {"$set": {"Assigned_Roles": new_roles}}
+            )
+            modified_count += 1
+            
+    return modified_count

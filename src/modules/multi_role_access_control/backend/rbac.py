@@ -36,26 +36,20 @@ def get_effective_permissions(user_id, db):
                 "Assigned_Roles": {"$ifNull": ["$Assigned_Roles", []]}
             }
         },
-        # 2.5. Fetch active Delegations where Delegatee_id == user_id
+        # 2.5. Fetch active Delegations recursively (Delegation Chains)
         {
-            "$lookup": {
+            "$graphLookup": {
                 "from": "delegations",
-                "let": { "user": "$_id" },
-                "pipeline": [
-                    {
-                        "$match": {
-                            "$expr": {
-                                "$and": [
-                                    {"$eq": ["$Delegatee_id", "$$user"]},
-                                    {"$eq": ["$Status", "Active"]},
-                                    {"$lte": ["$Start_time", "$$NOW"]},
-                                    {"$lt": ["$$NOW", "$End_time"]}
-                                ]
-                            }
-                        }
-                    }
-                ],
-                "as": "Active_Delegations"
+                "startWith": "$_id",
+                "connectFromField": "Delegator_id",
+                "connectToField": "Delegatee_id",
+                "as": "Active_Delegations",
+                "maxDepth": 5,
+                "restrictSearchWithMatch": {
+                    "Status": "Active",
+                    "Start_time": {"$lte": now},
+                    "End_time": {"$gt": now}
+                }
             }
         },
         # Combine user's Assigned_Roles and Target_Role_id from Active_Delegations
@@ -191,26 +185,20 @@ def get_active_roles(user_id, db):
                 "Assigned_Roles": {"$ifNull": ["$Assigned_Roles", []]}
             }
         },
-        # 2.5. Fetch active Delegations
+        # 2.5. Fetch active Delegations recursively (Delegation Chains)
         {
-            "$lookup": {
+            "$graphLookup": {
                 "from": "delegations",
-                "let": { "user": "$_id" },
-                "pipeline": [
-                    {
-                        "$match": {
-                            "$expr": {
-                                "$and": [
-                                    {"$eq": ["$Delegatee_id", "$$user"]},
-                                    {"$eq": ["$Status", "Active"]},
-                                    {"$lte": ["$Start_time", "$$NOW"]},
-                                    {"$lt": ["$$NOW", "$End_time"]}
-                                ]
-                            }
-                        }
-                    }
-                ],
-                "as": "Active_Delegations"
+                "startWith": "$_id",
+                "connectFromField": "Delegator_id",
+                "connectToField": "Delegatee_id",
+                "as": "Active_Delegations",
+                "maxDepth": 5,
+                "restrictSearchWithMatch": {
+                    "Status": "Active",
+                    "Start_time": {"$lte": now},
+                    "End_time": {"$gt": now}
+                }
             }
         },
         # Combine
