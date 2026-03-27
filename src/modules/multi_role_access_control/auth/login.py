@@ -48,15 +48,23 @@ def login_page():
 
         # Resolve effective permissions via $graphLookup
         perms = get_effective_permissions(user["_id"], db)
-        
-        # Calculate Primary Role strictly from MongoDB database to prevent UI override spoofing
-        role = "Patient" # Fallback safety
-        if user.get("Assigned_Roles") and len(user["Assigned_Roles"]) > 0:
-            first_role = user["Assigned_Roles"][0]
-            r_id = first_role.get("role_id") if isinstance(first_role, dict) else first_role
+
+        # --- Resolve PRIMARY ROLE for routing ---
+        # Priority: Admin > Lead_Doctor > Doctor > Patient (lowest ID wins if tied)
+        # Supports both dict {"role_id": ObjectId} and legacy raw ObjectId format.
+        ROLE_PRIORITY = {"Admin": 0, "System_Admin": 0, "Lead_Doctor": 1, "Doctor": 2, "Nurse": 2, "Patient": 9}
+        role = "Patient"  # safe fallback
+        best_priority = 99
+
+        for role_item in user.get("Assigned_Roles", []):
+            r_id = role_item.get("role_id") if isinstance(role_item, dict) else role_item
             role_doc = db["roles"].find_one({"_id": r_id})
             if role_doc:
-                role = role_doc.get("Role_name", "Patient")
+                r_name = role_doc.get("Role_name", "Patient")
+                priority = ROLE_PRIORITY.get(r_name, 5)
+                if priority < best_priority:
+                    best_priority = priority
+                    role = r_name
 
         st.session_state.logged_in = True
         st.session_state.role = role
@@ -72,7 +80,7 @@ def login_page():
         log_audit_event(db, action="LOGIN_SUCCESS", user_id=str(user["_id"]),
                         target_entity="auth", status="SUCCESS")
 
-        st.success(f"✅ Welcome, {user.get('Username')}!  Permissions: {perms}")
+        st.success(f"✅ Welcome, {user.get('Username')}! Role: {role}. Permissions: {perms}")
         st.rerun()
 
     st.markdown("Don't have an account?")

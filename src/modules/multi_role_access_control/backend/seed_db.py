@@ -35,7 +35,17 @@ def seed_db():
     print(f"✅ Instantiated {len(perms)} Permissions.")
 
     # 2. Roles (Logical Hierarchy)
-    
+
+    # Patient Role (Base public role)
+    patient_role = {
+        "Role_name": "Patient",
+        "Description": "Read-only access to own health data",
+        "Level": 5,
+        "Parent_Role_id": None,
+        "Permissions": [perm_map["READ_PATIENT_DATA"]]
+    }
+    patient_role_id = db.roles.insert_one(patient_role).inserted_id
+
     # Doctor Role (Base clinical)
     doctor_role = {
         "Role_name": "Doctor",
@@ -61,43 +71,56 @@ def seed_db():
         "Role_name": "Admin",
         "Description": "System administrative access",
         "Level": 1,
-        "Parent_Role_id": None, # Admin is separate from Clinical hierarchy
+        "Parent_Role_id": None,  # Admin is separate from Clinical hierarchy
         "Permissions": list(perm_map.values())  # Superuser: all permissions
     }
-    admin_id = db.roles.insert_one(admin_role).inserted_id
-    
-    print("✅ Instantiated roles: Doctor -> Lead_Doctor (Inheritance) and Admin (Independent).")
+    admin_role_id = db.roles.insert_one(admin_role).inserted_id
+
+    print("✅ Instantiated roles: Patient, Doctor -> Lead_Doctor (Inheritance) and Admin (Independent).")
 
     # 3. Test Users
     # Password set to "password123" (sha256)
     hashed_pw = "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f"
-    
+
+    # IMPORTANT: Assigned_Roles MUST be stored as dicts {"role_id": ObjectId}
+    # so that all consumers (login, rbac, admin_service) can use .get("role_id")
     users_data = [
         {
             "Username": "admin_alice",
             "Email": "alice@hospital.com",
             "Hashed_password": hashed_pw,
             "Status": "Active",
-            "Assigned_Roles": [admin_id, lead_doctor_id] # MULTI-ROLE: Alice is both Admin and a Lead Doctor
+            # MULTI-ROLE: Alice is both Admin and Lead Doctor
+            "Assigned_Roles": [
+                {"role_id": admin_role_id},
+                {"role_id": lead_doctor_id}
+            ]
         },
         {
             "Username": "dr_bob",
             "Email": "bob@hospital.com",
             "Hashed_password": hashed_pw,
             "Status": "Active",
-            "Assigned_Roles": [doctor_id]
+            "Assigned_Roles": [{"role_id": doctor_id}]
         },
         {
             "Username": "lead_dr_charlie",
             "Email": "charlie@hospital.com",
             "Hashed_password": hashed_pw,
             "Status": "Active",
-            "Assigned_Roles": [lead_doctor_id]
+            "Assigned_Roles": [{"role_id": lead_doctor_id}]
+        },
+        {
+            "Username": "patient_diana",
+            "Email": "diana@hospital.com",
+            "Hashed_password": hashed_pw,
+            "Status": "Active",
+            "Assigned_Roles": [{"role_id": patient_role_id}]
         }
     ]
-    
+
     db.users.insert_many(users_data)
-    print("✅ Instantiated 3 users with Multi-Role proof-of-concept.")
+    print("✅ Instantiated 4 users with Multi-Role proof-of-concept.")
 
     # 4. Advanced Test Cases (G5 Module 41 Specific)
     now = datetime.utcnow()
@@ -105,12 +128,13 @@ def seed_db():
     bob = db.users.find_one({"Username": "dr_bob"})
     charlie = db.users.find_one({"Username": "lead_dr_charlie"})
 
-    # A. Delegation: Bob (Doctor) delegates to Charlie (Lead Doctor)
+    # A. Delegation: Bob (Doctor) delegates a Doctor role to Charlie (Lead Doctor)
+    # Note: Level check relaxed in seed data — this tests the delegation pipeline directly
     db.delegations.insert_one({
         "Delegator_id": bob["_id"],
         "Delegatee_id": charlie["_id"],
         "Target_Role_id": doctor_id,
-        "Delegation_type": "Peer-to-Peer",
+        "Delegation_type": "Hierarchical",
         "Reason": "Conference attendance coverage",
         "Status": "Active",
         "Start_time": now - timedelta(hours=1),
@@ -144,6 +168,12 @@ def seed_db():
     })
 
     print("✅ Seeded delegations, overrides, and review campaigns.")
+    print("")
+    print("📋 Test Credentials (password: password123):")
+    print("   admin_alice   → Admin + Lead_Doctor (Admin Dashboard)")
+    print("   lead_dr_charlie → Lead_Doctor (Doctor Dashboard with approval powers)")
+    print("   dr_bob        → Doctor (Doctor Dashboard)")
+    print("   patient_diana → Patient (Patient Dashboard)")
     print("✨ Database reset and seeding complete!")
 
 if __name__ == "__main__":

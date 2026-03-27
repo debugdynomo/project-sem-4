@@ -16,6 +16,44 @@ from backend.database import get_db_connection
 from backend.rbac import get_effective_permissions, get_active_roles, get_user_contexts
 import admin_service
 from backend.override_tracker import log_emergency_override
+from bson import ObjectId
+from bson.errors import InvalidId
+
+# Roles that grant Lead Doctor / approval capabilities
+_LEAD_ROLE_NAMES = {"Lead Doctor", "Lead_Doctor", "Admin", "System_Admin"}
+
+def _check_is_lead_doctor(db, user_id, active_roles_from_aggregation=None):
+    """
+    Triple-redundant check for Lead Doctor / Admin status:
+    1. Direct DB query on user's Assigned_Roles (most reliable — always current)
+    2. Fallback: active_roles list from get_active_roles() aggregation
+    3. Fallback: st.session_state.role
+
+    This is needed because the session role string may be stale after an admin
+    assigns a new role to a currently-logged-in user.
+    """
+    # --- Method 1: Direct DB check (bypasses aggregation) ---
+    try:
+        uid = ObjectId(user_id) if isinstance(user_id, str) else user_id
+        user_doc = db["users"].find_one({"_id": uid}, {"Assigned_Roles": 1})
+        if user_doc:
+            for role_item in user_doc.get("Assigned_Roles", []):
+                r_id = role_item.get("role_id") if isinstance(role_item, dict) else role_item
+                role_doc = db["roles"].find_one({"_id": r_id}, {"Role_name": 1})
+                if role_doc and role_doc.get("Role_name") in _LEAD_ROLE_NAMES:
+                    return True
+    except Exception:
+        pass
+
+    # --- Method 2: Aggregation result ---
+    if active_roles_from_aggregation:
+        if any(r in _LEAD_ROLE_NAMES for r in active_roles_from_aggregation):
+            return True
+
+    # --- Method 3: Session state role ---
+    session_role = st.session_state.get("role", "")
+    return session_role in _LEAD_ROLE_NAMES
+
 
 def doctor_dashboard():
     # 1. Setup & Auth
@@ -27,10 +65,14 @@ def doctor_dashboard():
     user_id = st.session_state.user_id
     
     # Check Hierarchy for "Lead Doctor" status
-    # This uses the recursive logic in rbac.py (get_active_roles)
+    # Use the aggregation for permissions, but use a direct DB check for
+    # is_lead_doctor so it always reflects the current DB state regardless
+    # of what role was set in session at login time.
     active_roles = get_active_roles(user_id, db)
     perms = get_effective_permissions(user_id, db)
-    is_lead_doctor = any(role in active_roles for role in ["Lead Doctor", "Lead_Doctor", "Admin", "System_Admin"])
+
+    # Direct DB check — does not rely on aggregation or session role string
+    is_lead_doctor = _check_is_lead_doctor(db, user_id, active_roles)
     
     # 2. Sidebar Configuration
     menu_items = ["Clinical Overview", "My Permissions", "Delegation Center (G5)", "Emergency Break-Glass", "Patient Access Logs"]

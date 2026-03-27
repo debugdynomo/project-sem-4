@@ -47,14 +47,20 @@ if not st.session_state.logged_in and not st.session_state._logged_out:
                 user = db["users"].find_one({"_id": ObjectId(saved_user_id)})
 
                 if user and user.get("Status") == "Active":
-                    # Resolve role from DB
-                    role = "Patient"  # fallback
-                    if user.get("Assigned_Roles") and len(user["Assigned_Roles"]) > 0:
-                        first_role = user["Assigned_Roles"][0]
-                        r_id = first_role.get("role_id") if isinstance(first_role, dict) else first_role
+                    # Priority-based role resolution (matches login.py)
+                    ROLE_PRIORITY = {"Admin": 0, "System_Admin": 0, "Lead_Doctor": 1, "Doctor": 2, "Nurse": 2, "Patient": 9}
+                    role = "Patient"
+                    best_priority = 99
+
+                    for role_item in user.get("Assigned_Roles", []):
+                        r_id = role_item.get("role_id") if isinstance(role_item, dict) else role_item
                         role_doc = db["roles"].find_one({"_id": r_id})
                         if role_doc:
-                            role = role_doc.get("Role_name", "Patient")
+                            r_name = role_doc.get("Role_name", "Patient")
+                            priority = ROLE_PRIORITY.get(r_name, 5)
+                            if priority < best_priority:
+                                best_priority = priority
+                                role = r_name
 
                     # Resolve permissions
                     perms = get_effective_permissions(user["_id"], db)
@@ -83,14 +89,23 @@ if not st.session_state.logged_in and not st.session_state._logged_out:
 
 # ---------------- HARD REDIRECT AFTER LOGIN ----------------
 if st.session_state.logged_in:
-    if st.session_state.role == "Patient":
+    role = st.session_state.role
+    if role == "Patient":
         patient_dashboard()
         st.stop()
-    elif st.session_state.role == "Doctor":
+    elif role in ("Doctor", "Nurse"):
         doctor_dashboard()
         st.stop()
-    elif st.session_state.role == "Admin":
+    elif role in ("Lead_Doctor", "Lead Doctor"):
+        doctor_dashboard()   # Lead Doctor uses the doctor dashboard (with extra capabilities)
+        st.stop()
+    elif role in ("Admin", "System_Admin"):
         admin_dashboard()
+        st.stop()
+    else:
+        # Unknown role — show doctor dashboard as safe default and warn
+        st.warning(f"Unrecognized role '{role}'. Defaulting to Doctor view.")
+        doctor_dashboard()
         st.stop()
 
 # ---------------- AUTH ROUTING ----------------
