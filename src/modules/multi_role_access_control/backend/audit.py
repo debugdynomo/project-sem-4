@@ -1,7 +1,52 @@
 import functools
+import socket
 from datetime import datetime, timezone
 from bson import ObjectId
 from bson.errors import InvalidId
+
+# ── IP address cache ────────────────────────────────────────────────
+_cached_ip = None
+
+
+def _get_client_ip():
+    """Return the actual IP address of this machine (cached after first call).
+
+    Strategy:
+      1. Open a UDP socket to a public DNS server to discover the local
+         network IP (works on LAN / WiFi without sending any data).
+      2. If that fails, try an external API (httpbin) for the public IP.
+      3. Ultimate fallback: 127.0.0.1
+    """
+    global _cached_ip
+    if _cached_ip is not None:
+        return _cached_ip
+
+    # ── Method 1: UDP socket trick (no data is actually sent) ──
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(2)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and ip != "0.0.0.0":
+            _cached_ip = ip
+            return _cached_ip
+    except Exception:
+        pass
+
+    # ── Method 2: External API for public IP ──
+    try:
+        import urllib.request
+        ip = urllib.request.urlopen("https://api.ipify.org", timeout=3).read().decode().strip()
+        if ip:
+            _cached_ip = ip
+            return _cached_ip
+    except Exception:
+        pass
+
+    # ── Fallback ──
+    _cached_ip = "127.0.0.1"
+    return _cached_ip
 
 
 def _normalize_object_id(value):
@@ -21,13 +66,16 @@ def log_audit_event(
     action,
     user_id=None,
     target_entity="System",
-    ip_address="127.0.0.1",
+    ip_address=None,
     status="SUCCESS",
     details=None,
 ):
     """Insert one audit log and fail fast if logging cannot be persisted."""
     if db is None:
         raise ValueError("Audit logging requires a valid `db` handle.")
+
+    if ip_address is None:
+        ip_address = _get_client_ip()
 
     doc = {
         "User_id": _normalize_object_id(user_id),
@@ -60,8 +108,8 @@ def audit_action(action, target_entity="System"):
                 )
             )
             
-            # In a real Streamlit app, IP might be pulled from request headers
-            ip_address = kwargs.get("ip_address", "127.0.0.1")
+            # Use actual client IP instead of hardcoded localhost
+            ip_address = kwargs.get("ip_address", _get_client_ip())
             
             # Use dynamic target_entity if passed, else fallback to decorator value
             resolved_target_entity = kwargs.get("target_entity", target_entity)
