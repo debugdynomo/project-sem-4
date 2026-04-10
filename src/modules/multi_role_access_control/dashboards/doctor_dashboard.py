@@ -16,6 +16,7 @@ from backend.database import get_db_connection
 from backend.rbac import get_effective_permissions, get_active_roles, get_user_contexts
 import admin_service
 from backend.override_tracker import log_emergency_override
+from backend.audit import log_audit_event
 from bson import ObjectId
 from bson.errors import InvalidId
 
@@ -254,21 +255,101 @@ def _render_approval_inbox(db, admin_id):
 
 def _render_audit_logs(db, user_id):
     st.subheader("🛡️ Patient Data Audit Logs")
-    st.markdown("Monitoring access to your assigned patients and your account activity.")
-    
-    # Fetch logs where User_id matches (My Activity)
-    # OR Target_Entity implies my patients (Harder to query without patient mapping)
-    # For now: Show "My Activity" and "Alerts"
-    
-    logs = list(db["audit_logs"].find(
-        {"User_id": admin_service.safe_objectid(user_id)}
-    ).sort("Timestamp", -1).limit(50))
-    
-    if logs:
-        df = pd.DataFrame(logs)
-        st.dataframe(df[["Action", "Target_Entity", "Timestamp", "Status", "Details"]], use_container_width=True)
-    else:
-        st.info("No audit logs found for your account.")
+    st.markdown("Monitor access to patient health records, as well as your own account activity.")
+
+    tab1, tab2 = st.tabs(["Patient Access Report", "My Activity Logs"])
+
+    # ── Tab 1: Select a patient and view ALL access to their records ──
+    with tab1:
+        st.markdown("Select a patient to view who has accessed their health records.")
+
+        # Fetch all users with the Patient role (global access – no restrictions)
+        patient_role = db["roles"].find_one({"Role_name": "Patient"})
+
+        patient_users = []
+        if patient_role:
+            # Support both dict-style and raw ObjectId role entries
+            patient_users = list(db["users"].find({
+                "$or": [
+                    {"Assigned_Roles.role_id": patient_role["_id"]},
+                    {"Assigned_Roles": patient_role["_id"]}
+                ],
+                "Status": "Active"
+            }))
+
+        if not patient_users:
+            st.info("No patients found in the system.")
+        else:
+            patient_map = {
+                f"{u.get('Username')} ({u.get('Email', 'N/A')})": str(u["_id"])
+                for u in patient_users
+            }
+            selected_label = st.selectbox(
+                "Select Patient", options=list(patient_map.keys())
+            )
+            selected_patient_id = patient_map[selected_label]
+
+            # Audit: log the doctor's act of viewing this patient's logs
+            # Use session state to avoid duplicate audit entries on Streamlit reruns
+            last_viewed = st.session_state.get("_last_viewed_patient_logs")
+            if last_viewed != selected_patient_id:
+                log_audit_event(
+                    db,
+                    action="VIEW_PATIENT_AUDIT_LOGS",
+                    user_id=user_id,
+                    target_entity=selected_patient_id,
+                    status="SUCCESS",
+                )
+                st.session_state._last_viewed_patient_logs = selected_patient_id
+
+            st.markdown(f"**Access logs for:** {selected_label}")
+
+            # Query audit_logs where Target_Entity matches the patient
+            # (includes ALL access – third-party and the patient's own)
+            patient_logs = list(db["audit_logs"].find(
+                {"Target_Entity": selected_patient_id}
+            ).sort("Timestamp", -1).limit(50))
+
+            if patient_logs:
+                display_data = []
+                for log in patient_logs:
+                    accessed_by = "Unknown/System"
+                    if log.get("User_id"):
+                        try:
+                            u_doc = db["users"].find_one({"_id": log["User_id"]})
+                            if u_doc:
+                                accessed_by = u_doc.get("Username", "Unknown")
+                        except Exception:
+                            pass
+
+                    display_data.append({
+                        "Date & Time": log.get("Timestamp", "N/A"),
+                        "Accessed By": accessed_by,
+                        "Action": log.get("Action", ""),
+                        "Status": log.get("Status", ""),
+                        "Details": str(log.get("Details", "")) if log.get("Details") else ""
+                    })
+
+                st.dataframe(pd.DataFrame(display_data), use_container_width=True)
+            else:
+                st.info("No access logs found for this patient.")
+
+    # ── Tab 2: Doctor's own activity ──
+    with tab2:
+        st.markdown("History of actions performed by your account.")
+
+        my_logs = list(db["audit_logs"].find(
+            {"User_id": admin_service.safe_objectid(user_id)}
+        ).sort("Timestamp", -1).limit(50))
+
+        if my_logs:
+            df = pd.DataFrame(my_logs)
+            st.dataframe(
+                df[["Action", "Target_Entity", "Timestamp", "Status", "Details"]],
+                use_container_width=True,
+            )
+        else:
+            st.info("No audit logs found for your account.")
 
 def _render_emergency_override(db, user_id):
     st.markdown("### 🚨 Emergency Break-Glass Override")

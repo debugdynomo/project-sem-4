@@ -240,8 +240,8 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
     Creates a delegation request with Status='Pending'.
     An Admin must approve it before it becomes Active.
     """
-    if delegation_type not in ["Hierarchical", "Peer-to-Peer", "Emergency"]:
-        raise ValueError("Invalid delegation_type. Must be Hierarchical, Peer-to-Peer, or Emergency")
+    if delegation_type not in ["Hierarchical", "Peer-to-Peer", "Emergency", "Health-Proxy"]:
+        raise ValueError("Invalid delegation_type. Must be Hierarchical, Peer-to-Peer, Emergency, or Health-Proxy")
 
     delegator = db["users"].find_one({"_id": safe_objectid(delegator_id)})
     delegatee = db["users"].find_one({"_id": safe_objectid(delegatee_id)})
@@ -296,9 +296,10 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
             if level < delegatee_best_level:
                 delegatee_best_level = level
 
-    if not owns_role and delegation_type != "Emergency":
+    if not owns_role and delegation_type not in ("Emergency", "Health-Proxy"):
         raise PermissionError(f"Delegator does not possess the target role.")
 
+    # Health-Proxy: patient delegates own role to a caregiver — skip level checks
     if delegation_type == "Peer-to-Peer" and delegator_best_level != delegatee_best_level:
         raise PermissionError(f"Peer-to-Peer delegation requires equal role levels (Delegator Rank: {delegator_best_level}, Delegatee Rank: {delegatee_best_level}).")
     elif delegation_type == "Hierarchical" and delegator_best_level >= delegatee_best_level:
@@ -321,8 +322,8 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
         raise ValueError("Emergency delegations cannot exceed 24 hours.")
     elif delegation_type == "Peer-to-Peer" and duration > timedelta(days=7):
         raise ValueError("Peer-to-Peer delegations cannot exceed 7 days.")
-    elif delegation_type == "Hierarchical" and duration > timedelta(days=30):
-        raise ValueError("Hierarchical delegations cannot exceed 30 days.")
+    elif delegation_type in ("Hierarchical", "Health-Proxy") and duration > timedelta(days=30):
+        raise ValueError(f"{delegation_type} delegations cannot exceed 30 days.")
 
     # Cycle detection
     cycle_check = list(db["delegations"].aggregate([

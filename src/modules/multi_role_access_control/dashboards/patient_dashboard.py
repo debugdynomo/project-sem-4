@@ -39,44 +39,61 @@ def render_access_logs():
     st.markdown("## 🛡️ My Access Logs")
     st.markdown("A history of who accessed your medical records and when.")
     st.divider()
-    
+
     try:
         db = get_db_connection()
     except Exception as e:
         st.error("Could not connect to database.")
         return
-        
+
     if db is not None:
         try:
             current_user_id = st.session_state.get("user_id")
-            
-            # Find logs where Target_Entity is this patient's user_id, 
-            # and the user who performed the action is NOT this patient.
+
+            # Safely convert to ObjectId for comparisons
+            try:
+                current_oid = ObjectId(current_user_id) if isinstance(current_user_id, str) and len(current_user_id) == 24 else current_user_id
+            except Exception:
+                current_oid = current_user_id
+
+            # ── Weekly access metric ──
+            week_ago = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=7)
+            weekly_count = db["audit_logs"].count_documents({
+                "Target_Entity": str(current_user_id),
+                "User_id": {"$ne": current_oid},
+                "Timestamp": {"$gte": week_ago}
+            })
+
+            st.metric("External Accesses This Week", weekly_count)
+            st.divider()
+
+            # ── Full log listing (external accesses only) ──
             logs_cursor = db["audit_logs"].find(
                 {
-                    "Target_Entity": str(current_user_id), 
-                    "User_id": {"$ne": ObjectId(current_user_id) if isinstance(current_user_id, str) and len(current_user_id)==24 else current_user_id}
+                    "Target_Entity": str(current_user_id),
+                    "User_id": {"$ne": current_oid}
                 }
             ).sort("Timestamp", pymongo.DESCENDING).limit(50)
-            
+
             audit_data = []
             for log in logs_cursor:
-                action = log.get("Action", "")
-                
                 username = "Unknown/System"
                 if log.get("User_id"):
                     try:
                         u = db["users"].find_one({"_id": log["User_id"]})
-                        if u: username = u.get("Username", "Unknown")
-                    except: pass
-                    
+                        if u:
+                            username = u.get("Username", "Unknown")
+                    except Exception:
+                        pass
+
                 audit_data.append({
                     "Date & Time": log.get("Timestamp", "N/A"),
                     "Accessed By": username,
-                    "Action": action,
-                    "Status": log.get("Status", "")
+                    "Action": log.get("Action", ""),
+                    "Status": log.get("Status", ""),
+                    "Details": str(log.get("Details", "")) if log.get("Details") else ""
                 })
-                
+
             if audit_data:
                 st.dataframe(audit_data, use_container_width=True)
             else:
@@ -105,7 +122,14 @@ def render_privacy_and_consent():
         if db is not None:
             user_id = st.session_state.get("user_id")
             if user_id:
-                active = list(db["delegations"].find({"Delegator_id": user_id, "Status": "Active"}))
+                # Convert to ObjectId for proper matching
+                try:
+                    uid_oid = ObjectId(user_id) if isinstance(user_id, str) and len(user_id) == 24 else user_id
+                except Exception:
+                    uid_oid = user_id
+
+                # ── Active delegations (with Revoke button) ──
+                active = list(db["delegations"].find({"Delegator_id": uid_oid, "Status": "Active"}))
                 
                 if not active:
                     st.info("You currently have no active proxies or delegated access.")
@@ -137,58 +161,96 @@ def render_privacy_and_consent():
                                     st.rerun()
                             st.divider()
 
+                # ── Pending requests (read-only) ──
+                pending = list(db["delegations"].find({"Delegator_id": uid_oid, "Status": "Pending"}))
+
+                if pending:
+                    st.markdown("---")
+                    st.subheader("⏳ Pending Requests")
+                    st.caption("These proxy requests are awaiting admin/lead doctor approval.")
+
+                    for doc in pending:
+                        del_name = "Unknown/System"
+                        try:
+                            del_u = db["users"].find_one({"_id": doc.get("Delegatee_id")})
+                            if del_u:
+                                del_name = del_u.get("Username", "Unknown")
+                        except Exception:
+                            pass
+
+                        with st.container():
+                            st.markdown(
+                                f"**Delegatee**: {del_name}  \n"
+                                f"**Type**: {doc.get('Delegation_type', 'N/A')} | "
+                                f"**Reason**: {doc.get('Reason', 'N/A')} | "
+                                f"**Valid**: {doc.get('Start_time', 'N/A')} → {doc.get('End_time', 'N/A')}"
+                            )
+                            st.divider()
+
     # TAB 2: Health Proxy
     with tab2:
         st.subheader("Assign Health Proxy")
         st.markdown("Temporarily delegate your Patient access to another user (e.g., a family member).")
-        
-        with st.form("new_proxy_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                delegate_email = st.text_input("Caregiver/Family Member Username")
-                reason = st.text_input("Reason")
-            with col2:
-                valid_from = st.date_input("Valid From", value=datetime.date.today())
-                valid_until = st.date_input("Valid Until", value=datetime.date.today() + datetime.timedelta(days=7))
-            
-            submit = st.form_submit_button("Grant Access", type="primary")
-            if submit:
-                if not delegate_email:
-                    st.error("Please provide the username.")
-                elif valid_until < valid_from:
-                    st.error("Expiry date cannot be before start date.")
-                else:
-                    if db is not None:
+
+        # Build a dropdown of active users (excluding the current patient)
+        current_uid = st.session_state.get("user_id")
+        all_users = list(db["users"].find({"Status": "Active"}))
+        user_map = {
+            u.get("Username", "unknown"): str(u["_id"])
+            for u in all_users
+            if str(u["_id"]) != current_uid
+        }
+
+        if not user_map:
+            st.info("No other active users available to assign as proxy.")
+        else:
+            with st.form("new_proxy_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    selected_delegatee = st.selectbox(
+                        "Caregiver/Family Member",
+                        options=list(user_map.keys())
+                    )
+                    reason = st.text_input("Reason")
+                with col2:
+                    valid_from = st.date_input("Valid From", value=datetime.date.today())
+                    valid_until = st.date_input("Valid Until", value=datetime.date.today() + datetime.timedelta(days=7))
+
+                submit = st.form_submit_button("Grant Access", type="primary")
+                if submit:
+                    if valid_until < valid_from:
+                        st.error("Expiry date cannot be before start date.")
+                    else:
                         try:
-                            del_user = db["users"].find_one({"Username": delegate_email})
+                            delegatee_id = user_map[selected_delegatee]
                             p_role = db["roles"].find_one({"Role_name": "Patient"})
-                            
-                            if del_user and p_role:
+
+                            if not p_role:
+                                st.error("Patient role not found in database.")
+                            else:
                                 start_dt = datetime.datetime.combine(valid_from, time.min, tzinfo=timezone.utc)
                                 end_dt = datetime.datetime.combine(valid_until, time.max, tzinfo=timezone.utc)
-                                
+
                                 from admin_service import create_delegation
-                                try:
-                                    req_id = create_delegation(
-                                        db=db,
-                                        delegator_id=st.session_state.get("user_id"),
-                                        delegatee_id=del_user["_id"],
-                                        target_role_id=p_role["_id"],
-                                        start_time=start_dt,
-                                        end_time=end_dt,
-                                        reason=reason,
-                                        delegation_type="Health-Proxy"
-                                    )
-                                    log_audit_event(db, action="HEALTH_PROXY_GRANTED", 
-                                                   user_id=st.session_state.get("user_id"),
-                                                   target_entity=str(del_user["_id"]), status="SUCCESS", 
-                                                   details={"delegatee": delegate_email, "delegation_id": req_id})
-                                                   
-                                    st.success(f"✅ Health proxy submitted for admin approval. Proxy ID: {req_id}")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Validation or Database Error: {e}")
-                            else:
-                                st.error("Target username not found or Patient role missing in DB.")
+                                req_id = create_delegation(
+                                    db=db,
+                                    delegator_id=current_uid,
+                                    delegatee_id=delegatee_id,
+                                    target_role_id=p_role["_id"],
+                                    start_time=start_dt,
+                                    end_time=end_dt,
+                                    reason=reason,
+                                    delegation_type="Health-Proxy"
+                                )
+                                log_audit_event(
+                                    db,
+                                    action="HEALTH_PROXY_GRANTED",
+                                    user_id=current_uid,
+                                    target_entity=delegatee_id,
+                                    status="SUCCESS",
+                                    details={"delegatee": selected_delegatee, "delegation_id": req_id}
+                                )
+                                st.success(f"✅ Health proxy submitted for admin approval. Proxy ID: {req_id}")
+                                st.rerun()
                         except Exception as e:
-                            st.error(f"Error connecting to database: {e}")
+                            st.error(f"Validation or Database Error: {e}")

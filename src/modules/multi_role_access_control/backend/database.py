@@ -92,7 +92,7 @@ def get_collection_templates() -> Dict[str, Dict[str, Any]]:
             "Delegator_id": "ObjectId",               # Initiates 1:N (ER)
             "Delegatee_id": "ObjectId",               # Receives  1:N (ER)
             "Target_Role_id": "ObjectId",             # Authorize N:1 (ER)
-            "Delegation_type": "Hierarchical | Peer-to-Peer | Emergency",
+            "Delegation_type": "Hierarchical | Peer-to-Peer | Emergency | Health-Proxy",
             "Reason": "string",
             "Status": "Active | Expired | Revoked",
             "Start_time": "datetime",
@@ -172,7 +172,7 @@ _VALIDATORS: Dict[str, dict] = {
                 "Delegatee_id":    {"bsonType": "objectId"},
                 "Target_Role_id":  {"bsonType": "objectId"},
                 "Delegation_type": {
-                    "enum": ["Hierarchical", "Peer-to-Peer", "Emergency"],
+                    "enum": ["Hierarchical", "Peer-to-Peer", "Emergency", "Health-Proxy"],
                 },
                 "Reason":     {"bsonType": "string"},
                 "Status":     {"enum": ["Active", "Expired", "Revoked", "Pending", "Rejected"]},
