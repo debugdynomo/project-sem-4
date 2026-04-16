@@ -15,6 +15,6 @@ def render_table(data, title=None):
 
     st.dataframe(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )

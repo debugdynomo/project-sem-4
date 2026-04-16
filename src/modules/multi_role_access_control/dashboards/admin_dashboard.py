@@ -112,6 +112,6 @@ def show_system_audit(db):
                     "Target Entity": str(log.get("Target_Entity", "")),
                     "IP Address": log.get("IP_Address", "Unknown")
                 })
-            st.dataframe(audit_data, use_container_width=True)
+            st.dataframe(audit_data, width="stretch")
     else:
         st.error("Database connection failed.")

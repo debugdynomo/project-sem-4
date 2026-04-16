@@ -119,7 +119,7 @@ def show_users_page():
                 "Status": u.get("Status", "")
             })
             
-        st.dataframe(table_data, use_container_width=True)
+        st.dataframe(table_data, width="stretch")
         
         st.subheader("Delete User")
         del_user_name = st.selectbox("Select User to Delete", [u.get("Username", "Unknown") for u in users])

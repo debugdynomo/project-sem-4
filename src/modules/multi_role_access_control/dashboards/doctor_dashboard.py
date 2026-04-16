@@ -112,7 +112,7 @@ def doctor_dashboard():
             
         if perms:
             df_perms = pd.DataFrame(perms, columns=["Permission Code"])
-            st.dataframe(df_perms, use_container_width=True)
+            st.dataframe(df_perms, width="stretch")
         else:
             st.warning("No active permissions found.")
 
@@ -209,7 +209,7 @@ def _render_delegation_center(db, user_id):
             # Cleanup for display
             df["Start_time"] = pd.to_datetime(df["Start_time"])
             df["End_time"] = pd.to_datetime(df["End_time"])
-            st.dataframe(df[["Delegation_type", "Status", "Start_time", "End_time", "Reason"]], use_container_width=True)
+            st.dataframe(df[["Delegation_type", "Status", "Start_time", "End_time", "Reason"]], width="stretch")
         else:
             st.info("No delegation history found.")
 
@@ -330,7 +330,7 @@ def _render_audit_logs(db, user_id):
                         "Details": str(log.get("Details", "")) if log.get("Details") else ""
                     })
 
-                st.dataframe(pd.DataFrame(display_data), use_container_width=True)
+                st.dataframe(pd.DataFrame(display_data), width="stretch")
             else:
                 st.info("No access logs found for this patient.")
 
@@ -346,7 +346,7 @@ def _render_audit_logs(db, user_id):
             df = pd.DataFrame(my_logs)
             st.dataframe(
                 df[["Action", "Target_Entity", "Timestamp", "Status", "Details"]],
-                use_container_width=True,
+                width="stretch",
             )
         else:
             st.info("No audit logs found for your account.")

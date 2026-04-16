@@ -135,7 +135,7 @@ def show_roles_page():
             matrix_data.append(row)
             
         matrix_df = pd.DataFrame(matrix_data)
-        st.dataframe(matrix_df, use_container_width=True)
+        st.dataframe(matrix_df, width="stretch")
 
     st.divider()
 
@@ -163,7 +163,7 @@ def show_roles_page():
                 "Direct Permissions": ", ".join(perms_list) if perms_list else "None"
             })
             
-        st.dataframe(table_data, use_container_width=True)
+        st.dataframe(table_data, width="stretch")
         
         st.subheader("Delete Role")
         del_role_name = st.selectbox("Select Role to Delete", role_names)

@@ -95,7 +95,7 @@ def render_access_logs():
                 })
 
             if audit_data:
-                st.dataframe(audit_data, use_container_width=True)
+                st.dataframe(audit_data, width="stretch")
             else:
                 st.info("No recent external access to your medical records.")
         except Exception as e:

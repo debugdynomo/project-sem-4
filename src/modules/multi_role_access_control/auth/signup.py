@@ -45,7 +45,7 @@ def signup_page():
 
         # Find the role ObjectId from the roles collection
         role_doc = db["roles"].find_one({"Role_name": role})
-        assigned_roles = [role_doc["_id"]] if role_doc else []
+        assigned_roles = [{"role_id": role_doc["_id"]}] if role_doc else []
 
         user_doc = {
             "Username": username,
