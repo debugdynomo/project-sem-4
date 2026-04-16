@@ -12,7 +12,8 @@ from admin_service import (
     delete_role,
     detect_all_conflicts,
     resolve_conflict,
-    evaluate_access
+    evaluate_access,
+    revoke_permission_from_role
 )
 from backend.permission_matrix import build_permission_matrix, get_latest_matrix
 from backend.rbac import get_effective_permissions
@@ -78,6 +79,25 @@ def show_roles_page():
             try:
                 assign_permission_to_role(db, admin_id, selected_role, selected_permission)
                 st.success("Permission assigned successfully")
+                time.sleep(1.5)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
+    st.divider()
+
+    st.subheader("Revoke Permission from Role")
+    if role_names and permission_names:
+        col3, col4 = st.columns(2)
+        with col3:
+            revoke_role_perm = st.selectbox("Select Role to Revoke From", role_names, key="revoke_role_perm")
+        with col4:
+            revoke_permission = st.selectbox("Select Permission to Revoke", permission_names, key="revoke_permission")
+
+        if st.button("Revoke Permission"):
+            try:
+                revoke_permission_from_role(db, admin_id, revoke_role_perm, revoke_permission)
+                st.success("Permission revoked successfully")
                 time.sleep(1.5)
                 st.rerun()
             except Exception as e:

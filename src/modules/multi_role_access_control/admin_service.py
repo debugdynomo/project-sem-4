@@ -230,6 +230,32 @@ def assign_permission_to_role(db, admin_id: str, role_name: str, permission_name
     return result.modified_count > 0
 
 
+@audit_action(action="REVOKE_PERMISSION", target_entity="roles")
+def revoke_permission_from_role(db, admin_id: str, role_name: str, permission_name: str) -> bool:
+    """
+    Revokes a permission from a role.
+    """
+    if not _is_admin(db, admin_id):
+        raise PermissionError("Only Admins can revoke permissions.")
+
+    # 1. Resolve role_id
+    role = db["roles"].find_one({"Role_name": role_name})
+    if not role:
+        raise ValueError(f"Role '{role_name}' not found.")
+    
+    # 2. Resolve permission_id
+    perm = db["permissions"].find_one({"Permission_name": permission_name})
+    if not perm: 
+        raise ValueError(f"Permission '{permission_name}' not found.")
+
+    # 3. Update role
+    result = db["roles"].update_one(
+        {"_id": role["_id"]},
+        {"$pull": {"Permissions": perm["_id"]}}
+    )
+    return result.modified_count > 0
+
+
 # --- DELEGATION SERVICE LOGIC ---
 
 @audit_action(action="CREATE_DELEGATION", target_entity="delegations")
