@@ -477,3 +477,174 @@ def cleanup_expired_roles(db, system_admin_id: str) -> int:
             modified_count += 1
             
     return modified_count
+
+
+# --- UPCOMING EXPIRATIONS ---
+
+def get_upcoming_expirations(db, days_ahead: int = 7) -> list:
+    """
+    Scans delegations and time-limited roles expiring within `days_ahead` days.
+    Returns an enriched list for admin dashboard notifications.
+    """
+    now = datetime.utcnow()
+    cutoff = now + timedelta(days=days_ahead)
+    results = []
+
+    # 1. Delegations expiring soon
+    expiring_delegations = list(db["delegations"].find({
+        "Status": "Active",
+        "End_time": {"$gt": now, "$lte": cutoff}
+    }).sort("End_time", 1))
+
+    for d in expiring_delegations:
+        delegator = db["users"].find_one({"_id": d["Delegator_id"]})
+        delegatee = db["users"].find_one({"_id": d["Delegatee_id"]})
+        role_doc = db["roles"].find_one({"_id": d["Target_Role_id"]})
+
+        hours_left = max(0, (d["End_time"] - now).total_seconds() / 3600)
+
+        results.append({
+            "type": "Delegation",
+            "delegator": delegator.get("Username", "Unknown") if delegator else "Unknown",
+            "delegatee": delegatee.get("Username", "Unknown") if delegatee else "Unknown",
+            "role": role_doc.get("Role_name", "Unknown") if role_doc else "Unknown",
+            "expires": d["End_time"],
+            "hours_left": round(hours_left, 1),
+            "id": str(d["_id"])
+        })
+
+    # 2. Time-limited roles (valid_until) expiring soon
+    all_users = list(db["users"].find({}))
+    for u in all_users:
+        for r in u.get("Assigned_Roles", []):
+            if isinstance(r, dict) and "valid_until" in r and r["valid_until"]:
+                if now < r["valid_until"] <= cutoff:
+                    role_doc = db["roles"].find_one({"_id": r.get("role_id")})
+                    hours_left = max(0, (r["valid_until"] - now).total_seconds() / 3600)
+                    results.append({
+                        "type": "Time-Limited Role",
+                        "delegator": "-",
+                        "delegatee": u.get("Username", "Unknown"),
+                        "role": role_doc.get("Role_name", "Unknown") if role_doc else "Unknown",
+                        "expires": r["valid_until"],
+                        "hours_left": round(hours_left, 1),
+                        "id": str(u["_id"])
+                    })
+
+    return sorted(results, key=lambda x: x["expires"])
+
+
+# --- CENTRAL ACCESS GATEKEEPER ---
+
+def evaluate_access(db, user_id: str, required_permission: str, context: str = None) -> tuple:
+    """
+    Central gatekeeper: checks whether a user holds a specific permission.
+    Optionally validates against context tags.
+
+    Returns:
+        (bool, str): (allowed, reason)
+    """
+    from backend.rbac import get_effective_permissions, get_user_contexts
+
+    perms = get_effective_permissions(safe_objectid(user_id), db)
+
+    if required_permission not in perms:
+        return (False, f"Permission '{required_permission}' not in effective permissions.")
+
+    # Optional context check
+    if context:
+        user_contexts = get_user_contexts(safe_objectid(user_id), db)
+        if user_contexts and context not in user_contexts:
+            return (False, f"Permission exists but context '{context}' is not in user's active contexts: {user_contexts}")
+
+    return (True, "Access granted.")
+
+
+# --- ROLE PERMISSIONS RESOLVER ---
+
+def get_role_permissions(db, role_id) -> list:
+    """
+    Returns the full list of permission names for a role, including
+    permissions inherited from parent roles (recursive).
+    """
+    role_id = safe_objectid(role_id)
+    if not role_id:
+        return []
+
+    visited = set()
+    all_perm_ids = set()
+
+    current_id = role_id
+    while current_id and str(current_id) not in visited:
+        visited.add(str(current_id))
+        role_doc = db["roles"].find_one({"_id": current_id})
+        if not role_doc:
+            break
+        for pid in role_doc.get("Permissions", []):
+            all_perm_ids.add(pid)
+        current_id = role_doc.get("Parent_Role_id")
+
+    if not all_perm_ids:
+        return []
+
+    perm_docs = list(db["permissions"].find({"_id": {"$in": list(all_perm_ids)}}))
+    return [p.get("Permission_name", str(p["_id"])) for p in perm_docs]
+
+
+# --- CONFLICT DETECTION & RESOLUTION ---
+
+def detect_all_conflicts(db) -> list:
+    """
+    Scans all users and returns a list of detected role conflicts.
+    Each entry contains:
+        user_id, username, conflicting_roles: [(role_a, role_b), ...]
+    """
+    conflict_matrix = {
+        "Doctor": ["Patient"],
+        "Patient": ["Doctor", "Admin", "Lead_Doctor", "Nurse"],
+        "Admin": ["Patient"]
+    }
+
+    all_users = list(db["users"].find({}))
+    all_roles = {str(r["_id"]): r.get("Role_name") for r in db["roles"].find({})}
+    conflicts = []
+
+    for u in all_users:
+        assigned = u.get("Assigned_Roles", [])
+        role_names = []
+        for r in assigned:
+            rid = r.get("role_id") if isinstance(r, dict) else r
+            name = all_roles.get(str(rid))
+            if name:
+                role_names.append(name)
+
+        found = []
+        checked = set()
+        for rn in role_names:
+            incompatible = conflict_matrix.get(rn, [])
+            for other in role_names:
+                pair = tuple(sorted([rn, other]))
+                if other in incompatible and pair not in checked:
+                    found.append(pair)
+                    checked.add(pair)
+
+        if found:
+            conflicts.append({
+                "user_id": str(u["_id"]),
+                "username": u.get("Username", "Unknown"),
+                "conflicting_roles": found
+            })
+
+    return conflicts
+
+
+@audit_action(action="RESOLVE_CONFLICT", target_entity="users")
+def resolve_conflict(db, admin_id: str, target_user_id: str, keep_role: str, remove_role: str) -> bool:
+    """
+    Admin-initiated conflict resolution: keeps one role and removes the other.
+    """
+    if not _is_admin(db, admin_id):
+        raise PermissionError("Only Admins can resolve role conflicts.")
+
+    return revoke_role_from_user(db, admin_id, target_user_id, remove_role)
+
