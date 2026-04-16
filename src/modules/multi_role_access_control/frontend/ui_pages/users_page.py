@@ -9,8 +9,11 @@ from admin_service import (
     get_all_users,
     assign_role_to_user,
     get_all_roles,
-    delete_user
+    delete_user,
+    detect_all_conflicts
 )
+from components.permission_guard import user_status_badge
+from datetime import datetime, timezone
 
 def show_users_page():
     db = get_db_connection()
@@ -91,6 +94,10 @@ def show_users_page():
     users = get_all_users(db)
 
     if users:
+        conflicts = detect_all_conflicts(db)
+        conflict_uids = {c["user_id"] for c in conflicts}
+        now = datetime.now(timezone.utc)
+        
         # Build dataframe data
         table_data = []
         for u in users:
@@ -100,8 +107,25 @@ def show_users_page():
             # Map assigned roles from ObjectIds to Names
             assigned_roles_ids = u.get("Assigned_Roles", [])
             assigned_roles_names = []
+            has_expiring = False
+            
             for item in assigned_roles_ids:
-                rid = item.get("role_id") if isinstance(item, dict) else item
+                if isinstance(item, dict):
+                    rid = item.get("role_id")
+                    if item.get("valid_until"):
+                        vu = item["valid_until"]
+                        try:
+                            # Handle timezone aware vs naive
+                            if vu.tzinfo is None:
+                                vu = vu.replace(tzinfo=timezone.utc)
+                        except Exception:
+                            pass
+                        hours_left = (vu - now).total_seconds() / 3600
+                        if 0 < hours_left < 48:
+                            has_expiring = True
+                else:
+                    rid = item
+                
                 role_doc = next((r for r in roles if str(r["_id"]) == str(rid)), None)
                 if role_doc:
                     assigned_roles_names.append(role_doc.get("Role_name", str(rid)))
@@ -109,14 +133,30 @@ def show_users_page():
                     assigned_roles_names.append(str(rid))
                     
             r_str = ", ".join(assigned_roles_names) if assigned_roles_names else "None"
+            if has_expiring:
+                r_str += " ⏰"
+                
+            # Delegation check
+            active_delegations = list(db["delegations"].find({
+                "Delegatee_id": u["_id"], "Status": "Active"
+            }))
+            if active_delegations:
+                r_str += " ⚡"
+
+            status = u.get("Status", "Unknown")
+            status_display = f"{user_status_badge(status)} {status}"
+            
+            username_display = u.get("Username", "")
+            if str(u["_id"]) in conflict_uids:
+                username_display += " ⚠️"
                     
             table_data.append({
                 "ID": str(u["_id"]),
-                "Username": u.get("Username", ""),
+                "Username": username_display,
                 "Email": u.get("Email", ""),
                 "Direct Roles": r_str,
                 "Effective Permissions": eff_perms_str,
-                "Status": u.get("Status", "")
+                "Status": status_display
             })
             
         st.dataframe(table_data, width="stretch")
@@ -127,9 +167,12 @@ def show_users_page():
             try:
                 target_user = next((u for u in users if u.get("Username") == del_user_name), None)
                 if target_user:
-                    delete_user(db, admin_id, str(target_user["_id"]))
-                    st.success(f"User {del_user_name} deleted successfully.")
-                    st.rerun()
+                    if str(target_user["_id"]) == admin_id:
+                        st.error("Action denied: Cannot delete your own account.")
+                    else:
+                        delete_user(db, admin_id, str(target_user["_id"]))
+                        st.success(f"User {del_user_name} deleted successfully.")
+                        st.rerun()
             except Exception as e:
                 st.error(f"Error deleting user: {str(e)}")
     else:

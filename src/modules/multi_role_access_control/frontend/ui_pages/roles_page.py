@@ -97,10 +97,14 @@ def show_roles_page():
             try:
                 target_user = next((u for u in users if u.get("Username") == revoke_user), None)
                 if target_user:
-                    revoke_role_from_user(db, admin_id, str(target_user["_id"]), revoke_role)
-                    st.success(f"Role '{revoke_role}' revoked from '{revoke_user}'")
-                    time.sleep(1.5)
-                    st.rerun()
+                    # Self-protection for Admin role
+                    if str(target_user["_id"]) == admin_id and revoke_role in ["Admin", "System_Admin"]:
+                        st.error("Action denied: Cannot revoke your own Admin privileges.")
+                    else:
+                        revoke_role_from_user(db, admin_id, str(target_user["_id"]), revoke_role)
+                        st.success(f"Role '{revoke_role}' revoked from '{revoke_user}'")
+                        time.sleep(1.5)
+                        st.rerun()
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 

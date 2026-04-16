@@ -65,31 +65,19 @@ def doctor_dashboard():
     db = get_db_connection()
     user_id = st.session_state.user_id
     
-    # Check Hierarchy for "Lead Doctor" status
-    # Use the aggregation for permissions, but use a direct DB check for
-    # is_lead_doctor so it always reflects the current DB state regardless
-    # of what role was set in session at login time.
-    active_roles = get_active_roles(user_id, db)
+    # Refresh permissions from DB to reflect any delegations granted since login
     perms = get_effective_permissions(user_id, db)
+    st.session_state.permissions = perms  # keep session in sync
+    active_roles = get_active_roles(user_id, db)
 
-    # Direct DB check — does not rely on aggregation or session role string
-    is_lead_doctor = _check_is_lead_doctor(db, user_id, active_roles)
-    
-    # 2. Sidebar Configuration
-    menu_items = ["Clinical Overview", "My Permissions", "Delegation Center (G5)", "Emergency Break-Glass", "Patient Access Logs"]
-    if is_lead_doctor:
-        menu_items.insert(2, "Approve Delegations")  # Add after "My Permissions" or anywhere logic
-        
-    if "CREATE_USER" in perms or "Admin" in active_roles:
-        menu_items.extend(["User Management", "Role Management", "System Audit"])
+    from components.permission_guard import has_permission
 
-    menu_items.append("Logout")
-
-    selected_page = sidebar(menu_items)
+    # 2. Sidebar — now fully permission-driven (built dynamically)
+    selected_page = sidebar()
 
     st.title(f"👨‍⚕️ Doctor Dashboard: {selected_page}")
 
-    # 3. Page Routing
+    # 3. Page Routing — uses permission checks instead of is_lead_doctor booleans
     if selected_page == "Clinical Overview":
         st.info("Module 41 Focus: Access Control & Delegation.")
         st.markdown("""
@@ -100,7 +88,9 @@ def doctor_dashboard():
         - Delegate roles to colleagues (Delegation Center).
         - Audit access to your patient's data.
         """)
-        # Placeholder for clinical stats if needed, but strictly scoping to Mod 41.
+
+        # ── My Active Delegated Permissions card ──
+        _render_delegated_permissions_card(db, user_id)
 
     elif selected_page == "My Permissions":
         st.subheader("My Effective Permissions")
@@ -120,19 +110,25 @@ def doctor_dashboard():
             st.write("Active Roles (Direct + Inherited):", active_roles)
 
     elif selected_page == "Delegation Center (G5)":
-        _render_delegation_center(db, user_id)
+        if has_permission("REQUEST_DELEGATION"):
+            _render_delegation_center(db, user_id)
+        else:
+            st.warning("🔒 You need the `REQUEST_DELEGATION` permission to access this page.")
 
     elif selected_page == "Emergency Break-Glass":
         _render_emergency_override(db, user_id)
 
     elif selected_page == "Approve Delegations":
-        if not is_lead_doctor:
-            st.error("Access Denied: Lead Doctor privileges required.")
-        else:
+        if has_permission("APPROVE_DELEGATION"):
             _render_approval_inbox(db, user_id)
+        else:
+            st.error("🔒 Access Denied: requires `APPROVE_DELEGATION` permission.")
 
     elif selected_page == "Patient Access Logs":
-        _render_audit_logs(db, user_id)
+        if has_permission("READ_PATIENT_DATA"):
+            _render_audit_logs(db, user_id)
+        else:
+            st.warning("🔒 You need the `READ_PATIENT_DATA` permission to view access logs.")
 
     elif selected_page == "User Management":
         from frontend.ui_pages.users_page import show_users_page
@@ -145,6 +141,48 @@ def doctor_dashboard():
     elif selected_page == "System Audit":
         from dashboards.admin_dashboard import show_system_audit
         show_system_audit(db)
+
+
+def _render_delegated_permissions_card(db, user_id):
+    """Show a card listing permissions the user currently holds via active delegations."""
+    from datetime import datetime
+    try:
+        uid = ObjectId(user_id) if isinstance(user_id, str) else user_id
+    except Exception:
+        return
+
+    now = datetime.utcnow()
+    active_deleg = list(db["delegations"].find({
+        "Delegatee_id": uid,
+        "Status": "Active",
+        "Start_time": {"$lte": now},
+        "End_time": {"$gt": now}
+    }))
+
+    if not active_deleg:
+        return
+
+    st.divider()
+    st.markdown("### ⚡ My Active Delegated Permissions")
+    for d in active_deleg:
+        delegator = db["users"].find_one({"_id": d["Delegator_id"]})
+        role_doc = db["roles"].find_one({"_id": d["Target_Role_id"]})
+        delegator_name = delegator.get("Username", "Unknown") if delegator else "Unknown"
+        role_name = role_doc.get("Role_name", "Unknown") if role_doc else "Unknown"
+
+        hours_left = max(0, (d["End_time"] - now).total_seconds() / 3600)
+
+        if hours_left < 2:
+            urgency = "🔴"
+        elif hours_left < 24:
+            urgency = "🟡"
+        else:
+            urgency = "🟢"
+
+        st.markdown(
+            f"{urgency} **{role_name}** delegated by **{delegator_name}** — "
+            f"expires in **{hours_left:.1f}h** ({d.get('Delegation_type', 'N/A')})"
+        )
 
 def _render_delegation_center(db, user_id):
     st.markdown("### 🏥 Clinical Role Delegation (M:N)")
