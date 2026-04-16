@@ -7,6 +7,7 @@ from frontend.ui_pages.users_page import show_users_page
 from frontend.ui_pages.roles_page import show_roles_page
 from frontend.ui_pages.delegation_page import show_delegation_page
 from frontend.ui_pages.reviews_page import show_reviews_page
+from frontend.ui_pages.overrides_page import show_overrides_page
 from backend.override_tracker import get_active_overrides, resolve_emergency_override
 
 def admin_dashboard():
@@ -33,6 +34,8 @@ def admin_dashboard():
         show_delegation_page()
     elif selected == "Access Recertification":
         show_reviews_page()
+    elif selected == "Override Tracking":
+        show_overrides_page()
     elif selected == "System Audit":
         show_system_audit(db)
     else:

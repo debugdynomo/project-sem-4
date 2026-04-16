@@ -18,7 +18,7 @@ def sidebar(menu_items=None):
     if role == 'Patient':
         menu_items = ["Dashboard", "Privacy & Consent (G5)", "My Access Logs", "Logout"]
     elif role == 'Admin' or role == 'System_Admin':
-        menu_items = ["Dashboard", "User Management", "Role Management", "Delegation Console (G5)", "Access Recertification", "System Audit", "Logout"]
+        menu_items = ["Dashboard", "User Management", "Role Management", "Delegation Console (G5)", "Access Recertification", "Override Tracking", "System Audit", "Logout"]
     else:
         if not menu_items:
             menu_items = ["Dashboard", "Logout"]
