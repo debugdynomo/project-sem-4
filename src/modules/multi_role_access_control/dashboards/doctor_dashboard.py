@@ -212,7 +212,13 @@ def _render_delegation_center(db, user_id):
             target_role_name = st.selectbox("Role to Delegate", options=list(role_map.keys()))
             
             delegation_type = st.selectbox("Delegation Type", ["Peer-to-Peer", "Hierarchical", "Emergency"])
-            hours = st.number_input("Duration (Hours)", min_value=1, max_value=72, value=4)
+            
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                hours = st.number_input("Duration (Hours)", min_value=0, max_value=72, value=4)
+            with col_t2:
+                minutes = st.number_input("Duration (Minutes)", min_value=0, max_value=59, value=0)
+                
             reason = st.text_area("Reason for Delegation", placeholder="e.g. Emergency Theater coverage")
             
             submitted = st.form_submit_button("Submit Request")
@@ -220,6 +226,8 @@ def _render_delegation_center(db, user_id):
             if submitted:
                 if not delegatee_name or not target_role_name:
                     st.error("Please fill all fields.")
+                elif hours == 0 and minutes == 0:
+                    st.error("Duration must be greater than 0.")
                 else:
                     try:
                         delegatee_id = user_map[delegatee_name]
@@ -232,7 +240,7 @@ def _render_delegation_center(db, user_id):
                             delegatee_id, 
                             target_role_id, 
                             datetime.utcnow(),
-                            datetime.utcnow() + timedelta(hours=int(hours)),
+                            datetime.utcnow() + timedelta(hours=int(hours), minutes=int(minutes)),
                             reason,
                             delegation_type
                         )

@@ -111,27 +111,52 @@ def show_delegation_page():
         delegations = get_active_delegations(db)
         
         del_formatted = []
+        del_options_map = {}
+        
+        users = get_all_users(db)
+        roles = get_all_roles(db)
+        
+        u_map = {str(u["_id"]): u.get("Username", "Unknown") for u in users}
+        r_map = {str(r["_id"]): r.get("Role_name", "Unknown") for r in roles}
+        
         for d in delegations:
-            record = d.copy()
-            record["_id"] = str(d["_id"])
-            record["Delegator_id"] = str(d.get("Delegator_id"))
-            record["Delegatee_id"] = str(d.get("Delegatee_id"))
-            record["Target_Role_id"] = str(d.get("Target_Role_id"))
-            del_formatted.append(record)
+            d_str = str(d["_id"])
+            delegator_name = u_map.get(str(d.get("Delegator_id")), "Unknown")
+            delegatee_name = u_map.get(str(d.get("Delegatee_id")), "Unknown")
+            role_name = r_map.get(str(d.get("Target_Role_id")), "Unknown")
+            
+            # For dataframe display
+            del_formatted.append({
+                "Delegator": delegator_name,
+                "Delegatee": delegatee_name,
+                "Role": role_name,
+                "Type": d.get("Delegation_type", "N/A"),
+                "Status": d.get("Status", "N/A"),
+                "Start Time": str(d.get("Start_time", "N/A")),
+                "End Time": str(d.get("End_time", "N/A")),
+                "Reason": d.get("Reason", "N/A")
+            })
+            
+            # For select box map
+            del_options_map[d_str] = f"{delegator_name} -> {delegatee_name} ({role_name})"
 
         if del_formatted:
-            st.dataframe(del_formatted)
+            st.dataframe(del_formatted, width="stretch")
             
             st.subheader("Revoke Delegation")
-            del_ids = [d["_id"] for d in del_formatted]
-            revoke_id = st.selectbox("Select Delegation to Revoke", del_ids)
+            revoke_id = st.selectbox(
+                "Select Delegation to Revoke", 
+                options=list(del_options_map.keys()),
+                format_func=lambda x: del_options_map[x]
+            )
+            
             if st.button("Revoke Delegation"):
                 try:
                     revoke_delegation(db, admin_id, revoke_id)
                     st.success("Delegation revoked successfully")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                    st.error(f"Error: {e}")
 
         else:
             st.write("No active delegations")
