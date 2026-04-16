@@ -76,8 +76,7 @@ def show_users_page():
                     
                     vu = None
                     if valid_until:
-                        import datetime
-                        vu = datetime.datetime.combine(valid_until, datetime.datetime.min.time())
+                        vu = datetime.combine(valid_until, datetime.min.time())
 
                     assign_role_to_user(db, admin_id, str(target_user["_id"]), selected_role, context=context, valid_until=vu)
                     st.success("Role assigned successfully")
