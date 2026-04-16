@@ -9,6 +9,8 @@ from frontend.ui_pages.delegation_page import show_delegation_page
 from frontend.ui_pages.reviews_page import show_reviews_page
 from frontend.ui_pages.overrides_page import show_overrides_page
 from backend.override_tracker import get_active_overrides, resolve_emergency_override
+from admin_service import get_upcoming_expirations, cleanup_expired_roles
+from backend.reviews_service import process_expired_campaigns
 
 def admin_dashboard():
     db = get_db_connection()
@@ -81,6 +83,57 @@ def show_admin_home(db):
             
     with col2:
          st.info("Use the sidebar to manage Users, Roles, Delegations, and view the System Audit.")
+
+    # ── Upcoming Expirations Panel ──
+    st.divider()
+    st.markdown("### ⏰ Upcoming Expirations (Next 7 Days)")
+    expirations = get_upcoming_expirations(db)
+
+    if not expirations:
+        st.success("No delegations or roles expiring in the next 7 days.")
+    else:
+        st.warning(f"**{len(expirations)}** item(s) expiring soon.")
+        exp_data = []
+        for e in expirations:
+            urgency = "🔴" if e["hours_left"] < 24 else "🟡" if e["hours_left"] < 72 else "🟢"
+            exp_data.append({
+                "Urgency": urgency,
+                "Type": e["type"],
+                "User": e["delegatee"],
+                "Role": e["role"],
+                "Expires": str(e["expires"]),
+                "Hours Left": e["hours_left"]
+            })
+        st.dataframe(exp_data, width="stretch")
+
+    # ── System Maintenance ──
+    st.divider()
+    st.markdown("### 🛠️ System Maintenance")
+    maint_col1, maint_col2 = st.columns(2)
+
+    with maint_col1:
+        if st.button("🧹 Cleanup Expired Roles", key="cleanup_roles"):
+            admin_id = st.session_state.get("user_id")
+            try:
+                count = cleanup_expired_roles(db, admin_id)
+                if count > 0:
+                    st.success(f"Cleaned up expired roles for {count} user(s).")
+                else:
+                    st.info("No expired roles found.")
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    with maint_col2:
+        if st.button("📝 Process Expired Campaigns", key="process_campaigns"):
+            admin_id = st.session_state.get("user_id")
+            try:
+                count = process_expired_campaigns(db, admin_id)
+                if count > 0:
+                    st.success(f"Processed {count} expired campaign(s).")
+                else:
+                    st.info("No expired campaigns to process.")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 def show_system_audit(db):
     st.markdown("## 🛡️ System Audit Logs")
