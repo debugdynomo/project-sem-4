@@ -13,7 +13,7 @@ from backend.rbac import get_effective_permissions
 
 
 def login_page():
-    st.title("🏥 MediCare Login")
+    st.title("MediCare Login")
 
     cookie_manager = stx.CookieManager(key="login_cookies")
 
@@ -31,7 +31,7 @@ def login_page():
         user = db["users"].find_one({"Username": username})
 
         if user is None:
-            st.error("❌ User not found. Check your username.")
+            st.error("User not found. Check your username.")
             log_audit_event(db, action="LOGIN_FAILED", target_entity="auth",
                             status="FAILED", details={"reason": "user_not_found", "username": username})
             return
@@ -40,7 +40,7 @@ def login_page():
         stored_pw = user.get("Hashed_password", "")
         attempt_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
         if stored_pw != attempt_hash:
-            st.error("❌ Incorrect password.")
+            st.error("Incorrect password.")
             log_audit_event(db, action="LOGIN_FAILED", user_id=str(user["_id"]),
                             target_entity="auth", status="FAILED",
                             details={"reason": "wrong_password"})

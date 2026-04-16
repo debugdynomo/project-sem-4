@@ -75,7 +75,7 @@ def doctor_dashboard():
     # 2. Sidebar — now fully permission-driven (built dynamically)
     selected_page = sidebar()
 
-    st.title(f"👨‍⚕️ Doctor Dashboard: {selected_page}")
+    st.title(f"Doctor Dashboard: {selected_page}")
 
     # 3. Page Routing — uses permission checks instead of is_lead_doctor booleans
     if selected_page == "Clinical Overview":
@@ -98,7 +98,7 @@ def doctor_dashboard():
         
         contexts = get_user_contexts(user_id, db)
         if contexts:
-            st.info(f"📍 **Active Context Restrictions:** {', '.join(contexts)}")
+            st.info(f"**Active Context Restrictions:** {', '.join(contexts)}")
             
         if perms:
             df_perms = pd.DataFrame(perms, columns=["Permission Code"])
@@ -113,7 +113,7 @@ def doctor_dashboard():
         if has_permission("REQUEST_DELEGATION"):
             _render_delegation_center(db, user_id)
         else:
-            st.warning("🔒 You need the `REQUEST_DELEGATION` permission to access this page.")
+            st.warning("You need the `REQUEST_DELEGATION` permission to access this page.")
 
     elif selected_page == "Emergency Break-Glass":
         _render_emergency_override(db, user_id)
@@ -122,13 +122,13 @@ def doctor_dashboard():
         if has_permission("APPROVE_DELEGATION"):
             _render_approval_inbox(db, user_id)
         else:
-            st.error("🔒 Access Denied: requires `APPROVE_DELEGATION` permission.")
+            st.error("Access Denied: requires `APPROVE_DELEGATION` permission.")
 
     elif selected_page == "Patient Access Logs":
         if has_permission("READ_PATIENT_DATA"):
             _render_audit_logs(db, user_id)
         else:
-            st.warning("🔒 You need the `READ_PATIENT_DATA` permission to view access logs.")
+            st.warning("You need the `READ_PATIENT_DATA` permission to view access logs.")
 
     elif selected_page == "User Management":
         from frontend.ui_pages.users_page import show_users_page
@@ -163,7 +163,7 @@ def _render_delegated_permissions_card(db, user_id):
         return
 
     st.divider()
-    st.markdown("### ⚡ My Active Delegated Permissions")
+    st.markdown("### My Active Delegated Permissions")
     for d in active_deleg:
         delegator = db["users"].find_one({"_id": d["Delegator_id"]})
         role_doc = db["roles"].find_one({"_id": d["Target_Role_id"]})
@@ -173,11 +173,11 @@ def _render_delegated_permissions_card(db, user_id):
         hours_left = max(0, (d["End_time"] - now).total_seconds() / 3600)
 
         if hours_left < 2:
-            urgency = "🔴"
+            urgency = "High"
         elif hours_left < 24:
-            urgency = "🟡"
+            urgency = "Medium"
         else:
-            urgency = "🟢"
+            urgency = "Low"
 
         st.markdown(
             f"{urgency} **{role_name}** delegated by **{delegator_name}** — "
@@ -185,7 +185,7 @@ def _render_delegated_permissions_card(db, user_id):
         )
 
 def _render_delegation_center(db, user_id):
-    st.markdown("### 🏥 Clinical Role Delegation (M:N)")
+    st.markdown("### Clinical Role Delegation (M:N)")
     
     tabs = st.tabs(["New Delegation Request", "My Delegation History"])
     
@@ -236,7 +236,7 @@ def _render_delegation_center(db, user_id):
                             reason,
                             delegation_type
                         )
-                        st.success(f"✅ Delegation submitted for admin approval! Request ID: {req_id}")
+                        st.success(f"Delegation submitted for admin approval! Request ID: {req_id}")
                     except Exception as e:
                         st.error(f"Validation or Database Error: {e}")
 
@@ -253,7 +253,7 @@ def _render_delegation_center(db, user_id):
 
 
 def _render_approval_inbox(db, admin_id):
-    st.markdown("### 📥 Delegation Approval Inbox")
+    st.markdown("### Delegation Approval Inbox")
     st.info("As a Lead Doctor / Admin, review and approve delegation requests from your team.")
 
     pending = admin_service.get_pending_delegations(db)
@@ -273,7 +273,7 @@ def _render_approval_inbox(db, admin_id):
                     f"Reason: {d.get('Reason', 'N/A')}"
                 )
             with col2:
-                if st.button("✅ Approve", key=f"approve_{d['_id']}"):
+                if st.button("Approve", key=f"approve_{d['_id']}"):
                     try:
                         admin_service.approve_delegation(db, admin_id=admin_id, delegation_id=str(d["_id"]))
                         st.success("Delegation approved!")
@@ -281,7 +281,7 @@ def _render_approval_inbox(db, admin_id):
                     except Exception as e:
                         st.error(f"Error: {e}")
             with col3:
-                if st.button("❌ Reject", key=f"reject_{d['_id']}"):
+                if st.button("Reject", key=f"reject_{d['_id']}"):
                     try:
                         admin_service.reject_delegation(db, admin_id=admin_id, delegation_id=str(d["_id"]))
                         st.warning("Delegation rejected.")
@@ -292,7 +292,7 @@ def _render_approval_inbox(db, admin_id):
 
 
 def _render_audit_logs(db, user_id):
-    st.subheader("🛡️ Patient Data Audit Logs")
+    st.subheader("Patient Data Audit Logs")
     st.markdown("Monitor access to patient health records, as well as your own account activity.")
 
     tab1, tab2 = st.tabs(["Patient Access Report", "My Activity Logs"])
@@ -390,7 +390,7 @@ def _render_audit_logs(db, user_id):
             st.info("No audit logs found for your account.")
 
 def _render_emergency_override(db, user_id):
-    st.markdown("### 🚨 Emergency Break-Glass Override")
+    st.markdown("### Emergency Break-Glass Override")
     st.error("WARNING: Use of this tool grants temporary uninhibited access to a target system or patient file. All actions are heavily audited and trigger immediate administrative alerts.")
     
     with st.form("break_glass_form"):
@@ -398,7 +398,7 @@ def _render_emergency_override(db, user_id):
         reason = st.text_area("Justification (Required)", placeholder="Describe the life-safety or clinical emergency...")
         duration = st.number_input("Duration (Hours)", min_value=1, max_value=24, value=2)
         
-        submitted = st.form_submit_button("🚨 ACTIVATE EMERGENCY ACCESS 🚨", type="primary")
+        submitted = st.form_submit_button("ACTIVATE EMERGENCY ACCESS", type="primary")
         
         if submitted:
             if not target_system or not reason:

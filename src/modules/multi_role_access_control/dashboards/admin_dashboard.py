@@ -44,13 +44,13 @@ def admin_dashboard():
         show_admin_home(db)
 
 def show_admin_home(db):
-    st.markdown("## 🏥 Admin Dashboard")
+    st.markdown("## Admin Dashboard")
     st.markdown("Welcome to the Module 41 / G5 Access Control Center.")
     st.divider()
     
     overrides = get_active_overrides(db)
     if overrides:
-        st.error("🚨 **ACTIVE EMERGENCY OVERRIDES DETECTED** 🚨")
+        st.error("**ACTIVE EMERGENCY OVERRIDES DETECTED**")
         for o in overrides:
             col1, col2 = st.columns([4, 1])
             user_doc = db["users"].find_one({"_id": o["user_id"]})
@@ -76,7 +76,7 @@ def show_admin_home(db):
         with metric_cols[0]:
             st.metric("Total Users", users_count)
             st.metric("Active Delegations", delegations_count)
-            st.metric("⏳ Pending Approvals", pending_count)
+            st.metric("Pending Approvals", pending_count)
         with metric_cols[1]:
             st.metric("Configured Roles", roles_count)
             st.metric("Security Events", audit_events)
@@ -86,7 +86,7 @@ def show_admin_home(db):
 
     # ── Upcoming Expirations Panel ──
     st.divider()
-    st.markdown("### ⏰ Upcoming Expirations (Next 7 Days)")
+    st.markdown("### Upcoming Expirations (Next 7 Days)")
     expirations = get_upcoming_expirations(db)
 
     if not expirations:
@@ -95,7 +95,7 @@ def show_admin_home(db):
         st.warning(f"**{len(expirations)}** item(s) expiring soon.")
         exp_data = []
         for e in expirations:
-            urgency = "🔴" if e["hours_left"] < 24 else "🟡" if e["hours_left"] < 72 else "🟢"
+            urgency = "High" if e["hours_left"] < 24 else "Medium" if e["hours_left"] < 72 else "Low"
             exp_data.append({
                 "Urgency": urgency,
                 "Type": e["type"],
@@ -108,11 +108,11 @@ def show_admin_home(db):
 
     # ── System Maintenance ──
     st.divider()
-    st.markdown("### 🛠️ System Maintenance")
+    st.markdown("### System Maintenance")
     maint_col1, maint_col2 = st.columns(2)
 
     with maint_col1:
-        if st.button("🧹 Cleanup Expired Roles", key="cleanup_roles"):
+        if st.button("Cleanup Expired Roles", key="cleanup_roles"):
             admin_id = st.session_state.get("user_id")
             try:
                 count = cleanup_expired_roles(db, admin_id)
@@ -124,7 +124,7 @@ def show_admin_home(db):
                 st.error(f"Error: {e}")
 
     with maint_col2:
-        if st.button("📝 Process Expired Campaigns", key="process_campaigns"):
+        if st.button("Process Expired Campaigns", key="process_campaigns"):
             admin_id = st.session_state.get("user_id")
             try:
                 count = process_expired_campaigns(db, admin_id)
@@ -136,7 +136,7 @@ def show_admin_home(db):
                 st.error(f"Error: {e}")
 
 def show_system_audit(db):
-    st.markdown("## 🛡️ System Audit Logs")
+    st.markdown("## System Audit Logs")
     st.caption("Comprehensive view of all Module 41 security events.")
     st.divider()
     

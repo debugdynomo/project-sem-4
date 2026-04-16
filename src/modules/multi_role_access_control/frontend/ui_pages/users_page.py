@@ -133,21 +133,21 @@ def show_users_page():
                     
             r_str = ", ".join(assigned_roles_names) if assigned_roles_names else "None"
             if has_expiring:
-                r_str += " ⏰"
+                r_str += " [Expiring]"
                 
             # Delegation check
             active_delegations = list(db["delegations"].find({
                 "Delegatee_id": u["_id"], "Status": "Active"
             }))
             if active_delegations:
-                r_str += " ⚡"
+                r_str += " [Delegated]"
 
             status = u.get("Status", "Unknown")
             status_display = f"{user_status_badge(status)} {status}"
             
             username_display = u.get("Username", "")
             if str(u["_id"]) in conflict_uids:
-                username_display += " ⚠️"
+                username_display += " [Conflict]"
                     
             table_data.append({
                 "ID": str(u["_id"]),

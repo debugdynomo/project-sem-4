@@ -46,11 +46,11 @@ def show_reviews_page():
                             with col1:
                                 st.write(f"User **{username}** holds role **{role_name}**")
                             with col2:
-                                if st.button("✅ Certify", key=f"cert_{c['_id']}_{user_id}_{role_id}"):
+                                if st.button("Certify", key=f"cert_{c['_id']}_{user_id}_{role_id}"):
                                     certify_access(db, admin_id, str(c["_id"]), str(user_id), str(role_id))
                                     st.rerun()
                             with col3:
-                                if st.button("❌ Revoke", key=f"rev_{c['_id']}_{user_id}_{role_id}"):
+                                if st.button("Revoke", key=f"rev_{c['_id']}_{user_id}_{role_id}"):
                                     revoke_access_review(db, admin_id, str(c["_id"]), str(user_id), str(role_id))
                                     st.rerun()
                             st.divider()

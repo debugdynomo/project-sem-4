@@ -117,7 +117,7 @@ def show_roles_page():
     st.write("Overview of all roles and their effective (inherited) permissions.")
     
     # Button to force matrix rebuild
-    if st.button("🔄 Snapshot Latest Matrix"):
+    if st.button("Snapshot Latest Matrix"):
         build_permission_matrix(db, admin_id)
         st.success("Matrix snapshot created.")
         time.sleep(1)
@@ -152,68 +152,6 @@ def show_roles_page():
             
         df = pd.DataFrame(df_data)
         st.dataframe(df, width="stretch")
-
-    st.divider()
-
-    # ── What-If Simulator ──
-    st.subheader("🔮 What-If Simulator")
-    st.write("Preview the resulting effective permissions before assigning a role to a user.")
-    
-    users = get_all_users(db)
-    user_names_list = [u.get("Username", "Unknown") for u in users]
-    
-    col_sim1, col_sim2 = st.columns(2)
-    with col_sim1:
-        sim_user = st.selectbox("Select User", user_names_list, key="sim_user")
-    with col_sim2:
-        sim_role = st.selectbox("Candidate Role to Assign", role_names, key="sim_role")
-        
-    if st.button("Simulate Assignment", type="primary"):
-        target_usr = next((u for u in users if u.get("Username") == sim_user), None)
-        target_role = next((r for r in roles if r.get("Role_name") == sim_role), None)
-        
-        if target_usr and target_role:
-            uid = target_usr["_id"]
-            
-            # Current permissions
-            current_perms = get_effective_permissions(uid, db)
-            
-            # Simulate by temporarily adding the role
-            # We don't save to DB. We just resolve the new role's perms and combine
-            from admin_service import get_role_permissions
-            candidate_perms = set(get_role_permissions(db, target_role["_id"]))
-            
-            combined = current_perms.union(candidate_perms)
-            new_gains = candidate_perms - current_perms
-            
-            # Show results
-            st.markdown(f"**Simulation Results for {sim_user} + {sim_role}**")
-            
-            scol1, scol2, scol3 = st.columns(3)
-            scol1.metric("Current Permissions", len(current_perms))
-            scol2.metric("Simulated Permissions", len(combined))
-            scol3.metric("Net Gain", f"+{len(new_gains)}")
-            
-            if new_gains:
-                st.success(f"**Newly gained permissions:** {', '.join(sorted(new_gains))}")
-            else:
-                st.info("No new permissions would be gained (user already has all permissions this role provides).")
-                
-            # Simulate Conflict
-            matrix = {"Doctor": ["Patient"], "Patient": ["Doctor", "Admin", "Lead_Doctor", "Nurse"], "Admin": ["Patient"]}
-            current_role_names = []
-            for ritem in target_usr.get("Assigned_Roles", []):
-                rid = ritem.get("role_id") if isinstance(ritem, dict) else ritem
-                rdoc = next((r for r in roles if str(r["_id"]) == str(rid)), None)
-                if rdoc: current_role_names.append(rdoc.get("Role_name"))
-                
-            incompatibles = matrix.get(sim_role, [])
-            found_conflicts = [r for r in current_role_names if r in incompatibles]
-            
-            if found_conflicts:
-                st.error(f"⚠️ **CONFLICT WARNING:** Assigning '{sim_role}' will conflict with the user's existing role(s): {', '.join(found_conflicts)}")
-            else:
-                st.success("✅ No role conflicts detected in simulation.")
 
     st.divider()
 
@@ -259,11 +197,11 @@ def show_roles_page():
     st.divider()
 
     # ── Conflict Resolution ──
-    st.subheader("⚠️ Role Conflict Resolution")
+    st.subheader("Role Conflict Resolution")
     st.write("Detect and resolve incompatible role assignments across all users.")
 
     # Show current conflict matrix
-    with st.expander("📋 Conflict Matrix Definition"):
+    with st.expander("Conflict Matrix Definition"):
         st.markdown("""
         | Role | Incompatible With |
         |------|------------------|
@@ -272,12 +210,12 @@ def show_roles_page():
         | Admin | Patient |
         """)
 
-    if st.button("🔍 Scan for Conflicts", key="scan_conflicts"):
+    if st.button("Scan for Conflicts", key="scan_conflicts"):
         conflicts = detect_all_conflicts(db)
         if not conflicts:
-            st.success("✅ No role conflicts detected across all users.")
+            st.success("No role conflicts detected across all users.")
         else:
-            st.warning(f"⚠️ Found **{len(conflicts)}** user(s) with conflicting role assignments.")
+            st.warning(f"Found **{len(conflicts)}** user(s) with conflicting role assignments.")
             for c in conflicts:
                 with st.container():
                     st.markdown(f"**User:** {c['username']}")

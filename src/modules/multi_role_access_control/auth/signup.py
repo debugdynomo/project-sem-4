@@ -34,10 +34,10 @@ def signup_page():
 
         # Check if username or email already exists
         if db["users"].find_one({"Username": username}):
-            st.error("❌ Username already taken.")
+            st.error("Username already taken.")
             return
         if db["users"].find_one({"Email": email}):
-            st.error("❌ Email already registered.")
+            st.error("Email already registered.")
             return
 
         # Hash password (SHA-256 for demo — matches auth_service.py)

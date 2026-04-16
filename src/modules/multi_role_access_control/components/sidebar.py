@@ -86,7 +86,7 @@ def sidebar(menu_items=None):
         default_idx = menu_items.index(restored_section)
 
     with st.sidebar:
-        st.markdown("## 🏥 MediCare")
+        st.markdown("## MediCare")
 
         # ── Role badge + permission count ──
         role_indicator()

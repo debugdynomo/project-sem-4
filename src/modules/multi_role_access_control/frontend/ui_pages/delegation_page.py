@@ -20,7 +20,7 @@ def show_delegation_page():
     st.title("Role Delegation")
 
     tab_create, tab_pending, tab_active, tab_chains = st.tabs([
-        "Create Delegation", "⏳ Pending Approvals", "Active Delegations", "🔗 Delegation Chains"
+        "Create Delegation", "Pending Approvals", "Active Delegations", "Delegation Chains"
     ])
 
     # ── TAB 1: Create Delegation ──
@@ -62,7 +62,7 @@ def show_delegation_page():
                             reason,
                             delegation_type="Hierarchical"
                         )
-                        st.success("✅ Delegation submitted for admin approval!")
+                        st.success("Delegation submitted for admin approval!")
                 except Exception as e:
                     st.error(f"Validation or Database Error: {str(e)}")
             else:
@@ -87,7 +87,7 @@ def show_delegation_page():
                             f"Reason: {d.get('Reason', 'N/A')}"
                         )
                     with col2:
-                        if st.button("✅ Approve", key=f"adm_approve_{d['_id']}"):
+                        if st.button("Approve", key=f"adm_approve_{d['_id']}"):
                             try:
                                 approve_delegation(db, admin_id=admin_id, delegation_id=str(d["_id"]))
                                 st.success("Delegation approved!")
@@ -95,7 +95,7 @@ def show_delegation_page():
                             except Exception as e:
                                 st.error(f"Error: {e}")
                     with col3:
-                        if st.button("❌ Reject", key=f"adm_reject_{d['_id']}"):
+                        if st.button("Reject", key=f"adm_reject_{d['_id']}"):
                             try:
                                 reject_delegation(db, admin_id=admin_id, delegation_id=str(d["_id"]))
                                 st.warning("Delegation rejected.")
@@ -138,7 +138,7 @@ def show_delegation_page():
 
     # ── TAB 4: Delegation Chains ──
     with tab_chains:
-        st.subheader("🔗 Delegation Chain Tracer")
+        st.subheader("Delegation Chain Tracer")
         st.markdown("Trace delegation chains from a selected user using `$graphLookup`.")
 
         users = get_all_users(db)

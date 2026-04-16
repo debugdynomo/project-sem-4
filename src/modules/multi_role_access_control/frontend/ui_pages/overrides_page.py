@@ -14,11 +14,11 @@ def show_overrides_page():
     db = get_db_connection()
     admin_id = st.session_state.get("user_id")
 
-    st.title("🚨 Emergency Override Tracking")
+    st.title("Emergency Override Tracking")
     st.caption("Comprehensive view of all break-glass override events.")
 
     tab_active, tab_history, tab_analytics = st.tabs([
-        "🔴 Active Overrides", "📋 Full History", "📊 Analytics"
+        "Active Overrides", "Full History", "Analytics"
     ])
 
     # ── TAB 1: Active Overrides ──
@@ -26,7 +26,7 @@ def show_overrides_page():
         overrides = get_active_overrides(db)
 
         if not overrides:
-            st.success("✅ No active emergency overrides. System is in normal operation.")
+            st.success("No active emergency overrides. System is in normal operation.")
         else:
             st.error(f"**{len(overrides)}** unresolved emergency override(s) require attention!")
 
@@ -47,11 +47,11 @@ def show_overrides_page():
                                   f"Elapsed: {hours_elapsed:.1f}h")
                     with col2:
                         if hours_elapsed > o.get("duration_hours", 1):
-                            st.warning("⏰ OVERDUE")
+                            st.warning("OVERDUE")
                         else:
-                            st.info("⏳ Active")
+                            st.info("Active")
                     with col3:
-                        if st.button("✅ Resolve", key=f"resolve_{o['_id']}"):
+                        if st.button("Resolve", key=f"resolve_{o['_id']}"):
                             resolve_emergency_override(db, admin_id, str(o["_id"]))
                             st.success("Override resolved.")
                             st.rerun()
@@ -86,7 +86,7 @@ def show_overrides_page():
                     "Reason": o.get("reason", "N/A"),
                     "Activated": o.get("timestamp", "N/A"),
                     "Duration (h)": o.get("duration_hours", "N/A"),
-                    "Status": "✅ Resolved" if o.get("resolved") else "🔴 Active",
+                    "Status": "Resolved" if o.get("resolved") else "Active",
                     "Resolved By": resolved_by_name,
                     "Time to Resolution": ttr
                 })

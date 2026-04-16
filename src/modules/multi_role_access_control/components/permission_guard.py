@@ -48,7 +48,7 @@ def require_permission(permission_name: str, fallback_msg: str = None):
     if has_permission(permission_name):
         yield True
     else:
-        msg = fallback_msg or f"🔒 Access Denied: requires `{permission_name}` permission."
+        msg = fallback_msg or f"Access Denied: requires `{permission_name}` permission."
         st.warning(msg)
         yield False
 
@@ -59,7 +59,7 @@ def require_any_permission(*permission_names, fallback_msg: str = None):
     if has_any_permission(*permission_names):
         yield True
     else:
-        msg = fallback_msg or f"🔒 Access Denied: requires one of {list(permission_names)}."
+        msg = fallback_msg or f"Access Denied: requires one of {list(permission_names)}."
         st.warning(msg)
         yield False
 
@@ -80,11 +80,10 @@ _ROLE_COLORS = {
 
 
 def role_indicator():
-    """Render the user's current role as a colored badge in the sidebar."""
+    """Render the user's current role as a badge in the sidebar."""
     role = st.session_state.get("role", "Unknown")
-    emoji = _ROLE_COLORS.get(role, "⚪")
     perms = st.session_state.get("permissions", [])
-    st.markdown(f"{emoji} **{role}** · {len(perms)} permissions")
+    st.markdown(f"**{role}** · {len(perms)} permissions")
 
 
 def permission_badge():
@@ -132,14 +131,14 @@ def delegation_indicator(db):
     })
 
     if active_delegations > 0:
-        st.markdown(f"⚡ **+{active_delegations} delegated** role(s) active")
+        st.markdown(f"**+{active_delegations} delegated** role(s) active")
 
 
 def user_status_badge(status: str) -> str:
-    """Return a colored emoji for a user status string."""
+    """Return a clean text indicator for a user status string."""
     badges = {
-        "Active": "🟢",
-        "Inactive": "🔴",
-        "Suspended": "🟡",
+        "Active": "Active",
+        "Inactive": "Inactive",
+        "Suspended": "Suspended",
     }
-    return badges.get(status, "⚪")
+    return badges.get(status, "Unknown")

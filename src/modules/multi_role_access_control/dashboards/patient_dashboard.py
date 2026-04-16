@@ -38,7 +38,7 @@ def show_main_dashboard():
 
     # ── Who Can See My Data panel ──
     st.divider()
-    st.markdown("### 👁️ Who Can See My Data")
+    st.markdown("### Who Can See My Data")
     st.caption("Users who currently have access to your health records.")
 
     try:
@@ -106,7 +106,7 @@ def show_main_dashboard():
                         accessor_list.append({
                             "User": delegatee.get("Username", "Unknown"),
                             "Access Via": f"Delegation: {role_name}",
-                            "Type": "⚡ Delegated"
+                            "Type": "Delegated"
                         })
 
         if accessor_list:
@@ -117,7 +117,7 @@ def show_main_dashboard():
         st.error(f"Unable to load access data: {e}")
 
 def render_access_logs():
-    st.markdown("## 🛡️ My Access Logs")
+    st.markdown("## My Access Logs")
     st.markdown("A history of who accessed your medical records and when.")
     st.divider()
 
@@ -183,7 +183,7 @@ def render_access_logs():
             st.error(f"Unable to load audit logs: {e}")
 
 def render_privacy_and_consent():
-    st.markdown("## 🤝 Privacy & Consent (G5)")
+    st.markdown("## Privacy & Consent (G5)")
     st.markdown("Manage who has delegated access to your health data.")
     st.divider()
     
@@ -247,7 +247,7 @@ def render_privacy_and_consent():
 
                 if pending:
                     st.markdown("---")
-                    st.subheader("⏳ Pending Requests")
+                    st.subheader("Pending Requests")
                     st.caption("These proxy requests are awaiting admin/lead doctor approval.")
 
                     for doc in pending:
