@@ -11,7 +11,7 @@ user's effective permissions, not hardcoded role names.
 import streamlit as st
 import extra_streamlit_components as stx
 from streamlit_option_menu import option_menu
-from components.permission_guard import role_indicator, delegation_indicator, has_permission
+from components.permission_guard import delegation_indicator, has_permission
 from backend.database import get_db_connection
 
 # ── Permission-to-menu-item mapping ──
@@ -87,9 +87,6 @@ def sidebar(menu_items=None):
 
     with st.sidebar:
         st.markdown("## MediCare")
-
-        # ── Role badge + permission count ──
-        role_indicator()
 
         # ── Delegation indicator ──
         try:

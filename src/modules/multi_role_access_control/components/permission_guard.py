@@ -78,14 +78,6 @@ _ROLE_COLORS = {
     "Patient": "🟣",
 }
 
-
-def role_indicator():
-    """Render the user's current role as a badge in the sidebar."""
-    role = st.session_state.get("role", "Unknown")
-    perms = st.session_state.get("permissions", [])
-    st.markdown(f"**{role}** · {len(perms)} permissions")
-
-
 def permission_badge():
     """
     Render the user's active permissions as styled chips.

@@ -44,7 +44,7 @@ def admin_dashboard():
         show_admin_home(db)
 
 def show_admin_home(db):
-    st.markdown("## Admin Dashboard")
+    st.markdown("## Dashboard")
     st.markdown("Welcome to the Module 41 / G5 Access Control Center.")
     st.divider()
     

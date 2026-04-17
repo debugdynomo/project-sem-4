@@ -143,14 +143,14 @@ def show_users_page():
                 r_str += " [Delegated]"
 
             status = u.get("Status", "Unknown")
-            status_display = f"{user_status_badge(status)} {status}"
+            # status_display = f"{user_status_badge(status)} {status}"
+            status_display = f"{user_status_badge(status)}"
             
             username_display = u.get("Username", "")
             if str(u["_id"]) in conflict_uids:
                 username_display += " [Conflict]"
                     
             table_data.append({
-                "ID": str(u["_id"]),
                 "Username": username_display,
                 "Email": u.get("Email", ""),
                 "Direct Roles": r_str,

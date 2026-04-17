@@ -164,7 +164,6 @@ def show_delegation_page():
     # ── TAB 4: Delegation Chains ──
     with tab_chains:
         st.subheader("Delegation Chain Tracer")
-        st.markdown("Trace delegation chains from a selected user using `$graphLookup`.")
 
         users = get_all_users(db)
         user_map = {u.get("Username", "Unknown"): str(u["_id"]) for u in users}
