@@ -98,28 +98,39 @@ def check_role_conflicts(db, target_user_id: str, new_role: str):
     # Conflict matrix definition for demonstration
     conflict_matrix = {
         "Doctor": ["Patient"],
-        "Patient": ["Doctor", "Admin", "Lead Doctor", "Nurse"],
+        "Lead_Doctor": ["Patient"],
+        "Patient": ["Doctor", "Admin", "Lead_Doctor", "Nurse"],
         "Admin": ["Patient"]
     }
     
-    incompatible_roles = conflict_matrix.get(new_role, [])
-    
+    # Get names of all existing roles
+    existing_role_names = []
     for r in user.get("Assigned_Roles", []):
-        if isinstance(r, dict):
-            r_id = r.get("role_id")
-        else:
-            r_id = r
+        r_id = r.get("role_id") if isinstance(r, dict) else r
         role_doc = db["roles"].find_one({"_id": r_id})
-        if role_doc and role_doc.get("Role_name") in incompatible_roles:
-            raise ValueError(f"Conflict Error: Cannot assign '{new_role}' while user holds incompatible role '{role_doc.get('Role_name')}'.")
+        if role_doc:
+            existing_role_names.append(role_doc.get("Role_name"))
+    
+    # Check both directions: new vs existing AND existing vs new
+    # Direction 1: Does the new role conflict with any existing role?
+    incompatible_with_new = conflict_matrix.get(new_role, [])
+    for existing in existing_role_names:
+        if existing != new_role and existing in incompatible_with_new:
+            raise ValueError(f"Conflict: '{new_role}' is incompatible with existing role '{existing}'.")
+    
+    # Direction 2: Does any existing role list the new role as incompatible?
+    for existing in existing_role_names:
+        if existing == new_role:
+            continue
+        incompatible_with_existing = conflict_matrix.get(existing, [])
+        if new_role in incompatible_with_existing:
+            raise ValueError(f"Conflict: Existing role '{existing}' is incompatible with '{new_role}'.")
 
 @audit_action(action="ASSIGN_ROLE", target_entity="users")
 def assign_role_to_user(db, admin_id: str, target_user_id: str, new_role: str, context: dict = None, valid_until: datetime = None) -> bool:
     """
     P5 Admin Capability: Appends a static role to a target user.
     """
-    check_role_conflicts(db, target_user_id, new_role)
-
     if not _is_admin(db, admin_id):
         raise PermissionError("Access Denied: Only Admins can execute role bindings.")
 

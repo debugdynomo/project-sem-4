@@ -10,8 +10,6 @@ from admin_service import (
     revoke_role_from_user,
     get_all_users,
     delete_role,
-    detect_all_conflicts,
-    resolve_conflict,
     evaluate_access,
     revoke_permission_from_role
 )
@@ -213,52 +211,3 @@ def show_roles_page():
                 st.error(f"Error: {str(e)}")
     else:
         st.write("No roles found")
-
-    st.divider()
-
-    # ── Conflict Resolution ──
-    st.subheader("Role Conflict Resolution")
-    st.write("Detect and resolve incompatible role assignments across all users.")
-
-    # Show current conflict matrix
-    with st.expander("Conflict Matrix Definition"):
-        st.markdown("""
-        | Role | Incompatible With |
-        |------|------------------|
-        | Doctor | Patient |
-        | Patient | Doctor, Admin, Lead_Doctor, Nurse |
-        | Admin | Patient |
-        """)
-
-    if st.button("Scan for Conflicts", key="scan_conflicts"):
-        conflicts = detect_all_conflicts(db)
-        if not conflicts:
-            st.success("No role conflicts detected across all users.")
-        else:
-            st.warning(f"Found **{len(conflicts)}** user(s) with conflicting role assignments.")
-            for c in conflicts:
-                with st.container():
-                    st.markdown(f"**User:** {c['username']}")
-                    for pair in c["conflicting_roles"]:
-                        st.error(f"Conflict: `{pair[0]}` ↔ `{pair[1]}`")
-
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button(f"Keep {pair[0]}, Remove {pair[1]}",
-                                        key=f"keep_{c['user_id']}_{pair[0]}_{pair[1]}"):
-                                try:
-                                    resolve_conflict(db, admin_id, c["user_id"], pair[0], pair[1])
-                                    st.success(f"Resolved: removed '{pair[1]}' from {c['username']}")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
-                        with col2:
-                            if st.button(f"Keep {pair[1]}, Remove {pair[0]}",
-                                        key=f"keep_{c['user_id']}_{pair[1]}_{pair[0]}"):
-                                try:
-                                    resolve_conflict(db, admin_id, c["user_id"], pair[1], pair[0])
-                                    st.success(f"Resolved: removed '{pair[0]}' from {c['username']}")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
-                    st.divider()

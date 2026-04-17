@@ -63,16 +63,6 @@ def seed_db():
     }
     doctor_id = db.roles.insert_one(doctor_role).inserted_id
 
-    # Lead Doctor Role (Inherits from Doctor)
-    lead_doctor_role = {
-        "Role_name": "Lead_Doctor",
-        "Description": "Senior clinical lead with approval authority",
-        "Level": 2,
-        "Parent_Role_id": doctor_id,
-        "Permissions": [perm_map["APPROVE_DELEGATION"]]
-    }
-    lead_doctor_id = db.roles.insert_one(lead_doctor_role).inserted_id
-
     # Admin Role (Independent administrative role)
     admin_role = {
         "Role_name": "Admin",
@@ -83,7 +73,7 @@ def seed_db():
     }
     admin_role_id = db.roles.insert_one(admin_role).inserted_id
 
-    print("✅ Instantiated roles: Patient, Doctor -> Lead_Doctor (Inheritance) and Admin (Independent).")
+    print("✅ Instantiated roles: Patient, Doctor, and Admin (Independent).")
 
     # 3. Test Users
     # Password set to "password123" (sha256)
@@ -99,8 +89,7 @@ def seed_db():
             "Status": "Active",
             # MULTI-ROLE: Alice is both Admin and Lead Doctor
             "Assigned_Roles": [
-                {"role_id": admin_role_id},
-                {"role_id": lead_doctor_id}
+                {"role_id": admin_role_id}
             ]
         },
         {
@@ -109,13 +98,6 @@ def seed_db():
             "Hashed_password": hashed_pw,
             "Status": "Active",
             "Assigned_Roles": [{"role_id": doctor_id}]
-        },
-        {
-            "Username": "lead_dr_charlie",
-            "Email": "charlie@hospital.com",
-            "Hashed_password": hashed_pw,
-            "Status": "Active",
-            "Assigned_Roles": [{"role_id": lead_doctor_id}]
         },
         {
             "Username": "patient_diana",
@@ -127,43 +109,16 @@ def seed_db():
     ]
 
     db.users.insert_many(users_data)
-    print("✅ Instantiated 4 users with Multi-Role proof-of-concept.")
+    print("✅ Instantiated 3 users with roles.")
 
     # 4. Advanced Test Cases (G5 Module 41 Specific)
     # Timestamps are relative to seed time so the demo data looks fresh
     now = now_ist()
     alice = db.users.find_one({"Username": "admin_alice"})
     bob = db.users.find_one({"Username": "dr_bob"})
-    charlie = db.users.find_one({"Username": "lead_dr_charlie"})
     diana = db.users.find_one({"Username": "patient_diana"})
 
-    # A. Active Delegation: Bob (Doctor) delegates Doctor role to Charlie (Lead Doctor)
-    # Started 2 hours ago, expires in 2 days — shows active delegation during demo
-    db.delegations.insert_one({
-        "Delegator_id": bob["_id"],
-        "Delegatee_id": charlie["_id"],
-        "Target_Role_id": doctor_id,
-        "Delegation_type": "Hierarchical",
-        "Reason": "Conference attendance coverage",
-        "Status": "Active",
-        "Start_time": now - timedelta(hours=2),
-        "End_time": now + timedelta(days=2)
-    })
-
-    # B. Pending Delegation: Charlie requests to delegate Lead_Doctor to Bob
-    # This gives the demo an item in the Approval Inbox
-    db.delegations.insert_one({
-        "Delegator_id": charlie["_id"],
-        "Delegatee_id": bob["_id"],
-        "Target_Role_id": lead_doctor_id,
-        "Delegation_type": "Peer-to-Peer",
-        "Reason": "Supervision handover for night shift",
-        "Status": "Pending",
-        "Start_time": now,
-        "End_time": now + timedelta(hours=8)
-    })
-
-    # C. Break-Glass Override — happened 15 min ago, still unresolved
+    # A. Break-Glass Override — happened 15 min ago, still unresolved
     db.overrides.insert_one({
         "user_id": bob["_id"],
         "overridden_system": "HIGH-RISK-DATABASE-01",
@@ -184,8 +139,7 @@ def seed_db():
         "created_at": now - timedelta(hours=18),
         "status": "Active",
         "reviews": [
-            {"user_id": bob["_id"], "role_id": doctor_id, "status": "Pending", "reviewed_by": None, "review_date": None},
-            {"user_id": charlie["_id"], "role_id": lead_doctor_id, "status": "Pending", "reviewed_by": None, "review_date": None}
+            {"user_id": bob["_id"], "role_id": doctor_id, "status": "Pending", "reviewed_by": None, "review_date": None}
         ]
     })
 
@@ -210,15 +164,6 @@ def seed_db():
             "Details": None,
         },
         {
-            "User_id": charlie["_id"],
-            "Action": "CREATE_DELEGATION",
-            "Target_Entity": "delegations",
-            "Timestamp": now - timedelta(minutes=45),
-            "IP_Address": "192.168.1.35",
-            "Status": "SUCCESS",
-            "Details": None,
-        },
-        {
             "User_id": bob["_id"],
             "Action": "LOG_EMERGENCY_OVERRIDE",
             "Target_Entity": "overrides",
@@ -233,10 +178,9 @@ def seed_db():
     print("✅ Seeded delegations, overrides, and review campaigns.")
     print("")
     print("📋 Test Credentials (password: password123):")
-    print("   admin_alice   → Admin + Lead_Doctor (Admin Dashboard)")
-    print("   lead_dr_charlie → Lead_Doctor (Doctor Dashboard with approval powers)")
-    print("   dr_bob        → Doctor (Doctor Dashboard)")
-    print("   patient_diana → Patient (Patient Dashboard)")
+    print("   admin_alice   → Admin")
+    print("   dr_bob        → Doctor")
+    print("   patient_diana → Patient")
     print("✨ Database reset and seeding complete!")
 
 if __name__ == "__main__":

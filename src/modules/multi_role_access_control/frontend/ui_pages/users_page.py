@@ -10,7 +10,8 @@ from admin_service import (
     assign_role_to_user,
     get_all_roles,
     delete_user,
-    detect_all_conflicts
+    detect_all_conflicts,
+    check_role_conflicts
 )
 from components.permission_guard import user_status_badge
 from datetime import datetime
@@ -56,6 +57,14 @@ def show_users_page():
 
     st.subheader("Assign Role to User")
 
+    # Display stored assignment messages (persists across rerun)
+    if "role_assign_msg" in st.session_state:
+        msg_type, msg_text = st.session_state.pop("role_assign_msg")
+        if msg_type == "conflict":
+            st.warning(msg_text)
+        else:
+            st.success(msg_text)
+
     users = get_all_users(db)
     roles = get_all_roles(db)
 
@@ -86,8 +95,15 @@ def show_users_page():
                         vu = datetime.combine(valid_until, datetime.min.time())
 
                     assign_role_to_user(db, admin_id, str(target_user["_id"]), selected_role, context=context, valid_until=vu)
-                    st.success("Role assigned successfully")
-                    time.sleep(1.5)
+                    
+                    # Post-assignment conflict check
+                    try:
+                        check_role_conflicts(db, str(target_user["_id"]), selected_role)
+                        st.session_state["role_assign_msg"] = ("success", "Role assigned successfully")
+                    except ValueError as conflict_err:
+                        st.session_state["role_assign_msg"] = ("conflict", f"⚠️ Role assigned, but conflict detected: {conflict_err}")
+                    
+                    time.sleep(1)
                     st.rerun()
                 else:
                     st.error("Selected user not found.")
