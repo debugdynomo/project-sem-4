@@ -167,18 +167,23 @@ def show_users_page():
         st.dataframe(table_data, width="stretch")
         
         st.subheader("Delete User")
-        del_user_name = st.selectbox("Select User to Delete", [u.get("Username", "Unknown") for u in users])
-        if st.button("Delete User", type="primary"):
-            try:
-                target_user = next((u for u in users if u.get("Username") == del_user_name), None)
-                if target_user:
-                    if str(target_user["_id"]) == admin_id:
-                        st.error("Action denied: Cannot delete your own account.")
-                    else:
-                        delete_user(db, admin_id, str(target_user["_id"]))
-                        st.success(f"User {del_user_name} deleted successfully.")
-                        st.rerun()
-            except Exception as e:
-                st.error(f"Error deleting user: {str(e)}")
+        selectable_users = [u.get("Username", "Unknown") for u in users if str(u.get("_id")) != str(admin_id)]
+        
+        if selectable_users:
+            del_user_name = st.selectbox("Select User to Delete", selectable_users)
+            if st.button("Delete User", type="primary"):
+                try:
+                    target_user = next((u for u in users if u.get("Username") == del_user_name), None)
+                    if target_user:
+                        if str(target_user["_id"]) == str(admin_id):
+                            st.error("Action denied: Cannot delete your own account.")
+                        else:
+                            delete_user(db, admin_id, str(target_user["_id"]))
+                            st.success(f"User {del_user_name} deleted successfully.")
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Error deleting user: {str(e)}")
+        else:
+            st.info("No other users available to delete.")
     else:
         st.write("No users found")
