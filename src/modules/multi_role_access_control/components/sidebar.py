@@ -20,16 +20,16 @@ from backend.database import get_db_connection
 MENU_PERMISSIONS = {
     "User Management":          ["CREATE_USER"],
     "Role Management":          ["CREATE_USER"],
-    "Delegation Console (G5)":  ["APPROVE_DELEGATION"],
+    "Delegation Console":  ["APPROVE_DELEGATION"],
     "Access Recertification":   ["VIEW_AUDIT_LOGS"],
     "Override Tracking":        ["VIEW_AUDIT_LOGS"],
     "System Audit":             ["VIEW_AUDIT_LOGS"],
 }
 
 # ── Base menus per role category ──
-_PATIENT_BASE = ["Dashboard", "Privacy & Consent (G5)", "My Access Logs"]
-_DOCTOR_BASE  = ["Clinical Overview", "My Permissions", "Delegation Center (G5)", "Emergency Break-Glass", "Patient Access Logs"]
-_ADMIN_BASE   = ["Dashboard", "User Management", "Role Management", "Delegation Console (G5)", "Access Recertification", "Override Tracking", "System Audit"]
+_PATIENT_BASE = ["Dashboard", "Privacy & Consent", "My Access Logs"]
+_DOCTOR_BASE  = ["Clinical Overview", "My Permissions", "Delegation Center", "Emergency Break-Glass", "Patient Access Logs"]
+_ADMIN_BASE   = ["Dashboard", "User Management", "Role Management", "Delegation Console", "Access Recertification", "Override Tracking", "System Audit"]
 
 
 def _build_menu(role, perms):

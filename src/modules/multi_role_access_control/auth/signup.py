@@ -2,7 +2,10 @@
 auth/signup.py — Streamlit signup page wired to MongoDB backend.
 """
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
 
 import streamlit as st
 from backend.database import get_db_connection

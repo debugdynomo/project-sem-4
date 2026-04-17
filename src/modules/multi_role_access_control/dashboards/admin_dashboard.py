@@ -1,5 +1,17 @@
 # dashboards/admin_dashboard.py
 import streamlit as st
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def to_ist(dt):
+    """Format a naive IST datetime for display."""
+    if dt is None:
+        return "Unknown"
+    try:
+        return dt.strftime("%Y-%m-%d %I:%M:%S %p IST")
+    except Exception:
+        return str(dt)
 import pymongo
 from components.sidebar import sidebar
 from backend.database import get_db_connection
@@ -37,7 +49,7 @@ def admin_dashboard():
         show_users_page()
     elif selected == "Role Management":
         show_roles_page()
-    elif selected == "Delegation Console (G5)":
+    elif selected == "Delegation Console":
         show_delegation_page()
     elif selected == "Access Recertification":
         show_reviews_page()
@@ -59,7 +71,7 @@ def show_admin_home(db):
             col, col2 = st.columns([4, 1])
             user_doc = db["users"].find_one({"_id": o["user_id"]})
             username = user_doc.get("Username") if user_doc else str(o["user_id"])
-            col.write(f"**{username}** initiated break-glass access to **{o['overridden_system']}** at {o['timestamp']}")
+            col.write(f"**{username}** initiated break-glass access to **{o['overridden_system']}** at {to_ist(o.get('timestamp'))}")
             col.write(f"*Reason:* {o['reason']}")
             if col2.button("Resolve", key=f"res_{o['_id']}"):
                 resolve_emergency_override(db, st.session_state.get("user_id"), str(o["_id"]))
@@ -148,7 +160,7 @@ def show_system_audit(db):
             audit_data = []
             for log in recent_logs:
                 ts = log.get("Timestamp")
-                ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "Unknown"
+                ts_str = to_ist(ts)
                 action = log.get("Action", "UNKNOWN")
                 status = log.get("Status", "UNKNOWN")
                 

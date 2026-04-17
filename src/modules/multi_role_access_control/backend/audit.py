@@ -1,6 +1,13 @@
 import functools
 import socket
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.now(tz=IST).replace(tzinfo=None)
 from bson import ObjectId
 from bson.errors import InvalidId
 
@@ -81,7 +88,7 @@ def log_audit_event(
         "User_id": _normalize_object_id(user_id),
         "Action": action,
         "Target_Entity": target_entity,
-        "Timestamp": datetime.now(timezone.utc),
+        "Timestamp": now_ist(),
         "IP_Address": ip_address,
         "Status": status,
         "Details": details,

@@ -1,4 +1,11 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.now(tz=IST).replace(tzinfo=None)
 from bson import ObjectId
 from backend.audit import audit_action
 
@@ -34,7 +41,7 @@ def create_review_campaign(db, admin_id: str, title: str, deadline: datetime) ->
         "title": title,
         "deadline": deadline,
         "created_by": safe_objectid(admin_id),
-        "created_at": datetime.utcnow(),
+        "created_at": now_ist(),
         "status": "Active",
         "reviews": reviews
     }
@@ -53,7 +60,7 @@ def certify_access(db, admin_id: str, campaign_id: str, user_id: str, role_id: s
         {"$set": {
             "reviews.$.status": "Approved",
             "reviews.$.reviewed_by": safe_objectid(admin_id),
-            "reviews.$.review_date": datetime.utcnow()
+            "reviews.$.review_date": now_ist()
         }}
     )
     return result.modified_count > 0
@@ -70,7 +77,7 @@ def revoke_access_review(db, admin_id: str, campaign_id: str, user_id: str, role
         {"$set": {
             "reviews.$.status": "Revoked",
             "reviews.$.reviewed_by": safe_objectid(admin_id),
-            "reviews.$.review_date": datetime.utcnow()
+            "reviews.$.review_date": now_ist()
         }}
     )
     # Remove from user's assigned roles
@@ -91,7 +98,7 @@ def process_expired_campaigns(db, system_admin_id: str) -> int:
     automatically revokes the user's role and marks the campaign as 'Completed'.
     Returns the number of campaigns processed.
     """
-    now = datetime.utcnow()
+    now = now_ist()
     expired_campaigns = list(db["access_reviews"].find(
         {"status": "Active", "deadline": {"$lt": now}}
     ))

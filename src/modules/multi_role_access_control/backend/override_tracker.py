@@ -1,4 +1,11 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.now(tz=IST).replace(tzinfo=None)
 from bson import ObjectId
 from backend.audit import audit_action
 
@@ -22,7 +29,7 @@ def log_emergency_override(db, user_id: str, overridden_system: str, reason: str
         "user_id": safe_objectid(user_id),
         "overridden_system": overridden_system,
         "reason": reason,
-        "timestamp": datetime.utcnow(),
+        "timestamp": now_ist(),
         "duration_hours": duration_hours,
         "status": "Active Alert",
         "resolved": False,
@@ -43,7 +50,7 @@ def resolve_emergency_override(db, admin_id: str, override_id: str) -> bool:
             "status": "Resolved",
             "resolved": True,
             "resolved_by": safe_objectid(admin_id),
-            "resolved_at": datetime.utcnow()
+            "resolved_at": now_ist()
         }}
     )
     return result.modified_count > 0

@@ -5,6 +5,22 @@ Shows all overrides (active + resolved), resolution metrics, and usage frequency
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.now(tz=IST).replace(tzinfo=None)
+
+def to_ist(dt):
+    """Format a naive IST datetime for display."""
+    if dt is None:
+        return "N/A"
+    try:
+        return dt.strftime("%Y-%m-%d %I:%M:%S %p IST")
+    except Exception:
+        return str(dt)
 
 from backend.database import get_db_connection
 from backend.override_tracker import get_active_overrides, resolve_emergency_override
@@ -34,7 +50,7 @@ def show_overrides_page():
                 user_doc = db["users"].find_one({"_id": o.get("user_id")})
                 username = user_doc.get("Username", "Unknown") if user_doc else "Unknown"
 
-                hours_elapsed = (datetime.utcnow() - o.get("timestamp", datetime.utcnow())).total_seconds() / 3600
+                hours_elapsed = (now_ist() - o.get("timestamp", now_ist())).total_seconds() / 3600
 
                 with st.container():
                     col1, col2, col3 = st.columns([3, 1, 1])
@@ -42,7 +58,7 @@ def show_overrides_page():
                         st.markdown(f"**User:** {username}")
                         st.markdown(f"**Target System:** `{o.get('overridden_system', 'N/A')}`")
                         st.caption(f"Reason: {o.get('reason', 'N/A')}")
-                        st.caption(f"Activated: {o.get('timestamp', 'N/A')} | "
+                        st.caption(f"Activated: {to_ist(o.get('timestamp'))} | "
                                   f"Duration: {o.get('duration_hours', 'N/A')}h | "
                                   f"Elapsed: {hours_elapsed:.1f}h")
                     with col2:
@@ -84,7 +100,7 @@ def show_overrides_page():
                     "User": username,
                     "Target System": o.get("overridden_system", "N/A"),
                     "Reason": o.get("reason", "N/A"),
-                    "Activated": o.get("timestamp", "N/A"),
+                    "Activated": to_ist(o.get("timestamp")),
                     "Duration (h)": o.get("duration_hours", "N/A"),
                     "Status": "Resolved" if o.get("resolved") else "Active",
                     "Resolved By": resolved_by_name,

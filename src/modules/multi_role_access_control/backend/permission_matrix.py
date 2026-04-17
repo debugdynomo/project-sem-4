@@ -5,6 +5,13 @@ Stores matrix snapshots in a `permission_matrix` collection for auditing
 permission drift over time.
 """
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.now(tz=IST).replace(tzinfo=None)
 from bson import ObjectId
 from backend.audit import audit_action
 
@@ -85,7 +92,7 @@ def build_permission_matrix(db, admin_id: str = None) -> str:
         matrix.append(row)
 
     snapshot = {
-        "timestamp": datetime.utcnow(),
+        "timestamp": now_ist(),
         "created_by": safe_objectid(admin_id) if admin_id else None,
         "role_count": len(roles),
         "permission_count": len(permissions),

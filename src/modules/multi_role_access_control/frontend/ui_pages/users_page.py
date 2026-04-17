@@ -13,7 +13,14 @@ from admin_service import (
     detect_all_conflicts
 )
 from components.permission_guard import user_status_badge
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.now(tz=IST).replace(tzinfo=None)
 
 def show_users_page():
     db = get_db_connection()
@@ -95,7 +102,7 @@ def show_users_page():
     if users:
         conflicts = detect_all_conflicts(db)
         conflict_uids = {c["user_id"] for c in conflicts}
-        now = datetime.now(timezone.utc)
+        now = now_ist()
         
         # Build dataframe data
         table_data = []
@@ -114,9 +121,8 @@ def show_users_page():
                     if item.get("valid_until"):
                         vu = item["valid_until"]
                         try:
-                            # Handle timezone aware vs naive
-                            if vu.tzinfo is None:
-                                vu = vu.replace(tzinfo=timezone.utc)
+                            # Handle timezone aware vs naive — not needed with naive now
+                            pass
                         except Exception:
                             pass
                         hours_left = (vu - now).total_seconds() / 3600

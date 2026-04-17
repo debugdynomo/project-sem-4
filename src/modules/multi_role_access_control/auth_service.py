@@ -4,7 +4,14 @@ Validates credentials against the 'users' collection in MongoDB.
 Field names match backend/database.py PascalCase schema: Username, Hashed_password, etc.
 """
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.now(tz=IST).replace(tzinfo=None)
 from typing import Optional
 
 
@@ -36,6 +43,6 @@ def login_user(db, username: str, password_attempt: str) -> Optional[dict]:
         "username": user.get("Username"),
         "assigned_roles": assigned_roles_normalized,
         "status": user.get("Status"),
-        "login_time": datetime.now(timezone.utc).isoformat(),
+        "login_time": now_ist().isoformat(),
     }
     return session_context

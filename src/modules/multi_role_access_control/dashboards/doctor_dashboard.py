@@ -1,6 +1,23 @@
 # dashboards/doctor_dashboard.py
 
 import streamlit as st
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    from datetime import datetime
+    return datetime.now(tz=IST).replace(tzinfo=None)
+
+def to_ist(dt):
+    """Format a naive IST datetime for display."""
+    if dt is None:
+        return "N/A"
+    try:
+        return dt.strftime("%Y-%m-%d %I:%M:%S %p IST")
+    except Exception:
+        return str(dt)
 import pandas as pd
 import sys
 import os
@@ -120,7 +137,7 @@ def doctor_dashboard():
         with st.expander("Debugging: Hierarchy & Roles"):
             st.write("Active Roles (Direct + Inherited):", active_roles)
 
-    elif selected_page == "Delegation Center (G5)":
+    elif selected_page == "Delegation Center":
         if has_permission("REQUEST_DELEGATION"):
             _render_delegation_center(db, user_id)
         else:
@@ -162,7 +179,7 @@ def _render_delegated_permissions_card(db, user_id):
     except Exception:
         return
 
-    now = datetime.utcnow()
+    now = now_ist()
     active_deleg = list(db["delegations"].find({
         "Delegatee_id": uid,
         "Status": "Active",
@@ -264,8 +281,8 @@ def _render_delegation_center(db, user_id):
                             user_id, 
                             delegatee_id, 
                             target_role_id, 
-                            datetime.utcnow(),
-                            datetime.utcnow() + timedelta(hours=int(hours), minutes=int(minutes)),
+                            now_ist(),
+                            now_ist() + timedelta(hours=int(hours), minutes=int(minutes)),
                             reason,
                             delegation_type
                         )
@@ -394,7 +411,7 @@ def _render_audit_logs(db, user_id):
                             pass
 
                     display_data.append({
-                        "Date & Time": log.get("Timestamp", "N/A"),
+                        "Date & Time": to_ist(log.get("Timestamp")),
                         "Accessed By": accessed_by,
                         "Action": log.get("Action", ""),
                         "Status": log.get("Status", ""),
@@ -415,6 +432,7 @@ def _render_audit_logs(db, user_id):
 
         if my_logs:
             df = pd.DataFrame(my_logs)
+            df["Timestamp"] = df["Timestamp"].apply(to_ist)
             st.dataframe(
                 df[["Action", "Target_Entity", "Timestamp", "Status", "Details"]],
                 width="stretch",

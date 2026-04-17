@@ -1,5 +1,12 @@
 from pymongo import ASCENDING
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.now(tz=IST).replace(tzinfo=None)
 import hashlib
 from bson import ObjectId
 from backend.audit import audit_action
@@ -59,7 +66,7 @@ def _is_admin(db, user_id: str) -> bool:
     for role_item in user.get("Assigned_Roles", []):
         if isinstance(role_item, dict):
             valid_until = role_item.get("valid_until")
-            if valid_until and valid_until < datetime.utcnow():
+            if valid_until and valid_until < now_ist():
                 continue
             role_id = role_item.get("role_id")
         else:
@@ -288,8 +295,8 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
     del_active_cursor = db["delegations"].find({
         "Delegatee_id": safe_objectid(delegator_id),
         "Status": "Active",
-        "Start_time": {"$lte": datetime.utcnow()},
-        "End_time": {"$gt": datetime.utcnow()}
+        "Start_time": {"$lte": now_ist()},
+        "End_time": {"$gt": now_ist()}
     })
     delegator_roles = [safe_objectid(r.get("role_id") if isinstance(r, dict) else r) for r in delegator.get("Assigned_Roles", [])]
     for d in del_active_cursor:
@@ -308,8 +315,8 @@ def create_delegation(db, delegator_id: str, delegatee_id: str,
     delegatee_active_cursor = db["delegations"].find({
         "Delegatee_id": safe_objectid(delegatee_id),
         "Status": "Active",
-        "Start_time": {"$lte": datetime.utcnow()},
-        "End_time": {"$gt": datetime.utcnow()}
+        "Start_time": {"$lte": now_ist()},
+        "End_time": {"$gt": now_ist()}
     })
     delegatee_roles = [safe_objectid(r.get("role_id") if isinstance(r, dict) else r) for r in delegatee.get("Assigned_Roles", [])]
     for d in delegatee_active_cursor:
@@ -479,7 +486,7 @@ def cleanup_expired_roles(db, system_admin_id: str) -> int:
     Scans all users and removes Assigned_Roles objects whose 'valid_until' is in the past.
     Returns the number of users modified.
     """
-    now = datetime.utcnow()
+    now = now_ist()
     users = db["users"].find({})
     
     modified_count = 0
@@ -512,7 +519,7 @@ def get_upcoming_expirations(db, days_ahead: int = 7) -> list:
     Scans delegations and time-limited roles expiring within `days_ahead` days.
     Returns an enriched list for admin dashboard notifications.
     """
-    now = datetime.utcnow()
+    now = now_ist()
     cutoff = now + timedelta(days=days_ahead)
     results = []
 

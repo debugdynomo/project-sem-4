@@ -1,5 +1,13 @@
 from bson import ObjectId
 from bson.errors import InvalidId
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    from datetime import datetime
+    return datetime.now(tz=IST).replace(tzinfo=None)
 
 def get_effective_permissions(user_id, db):
     """
@@ -23,7 +31,7 @@ def get_effective_permissions(user_id, db):
         return []
 
     from datetime import datetime
-    now = datetime.utcnow()
+    now = now_ist()
 
     pipeline = [
         # 1. Match the specific User
@@ -172,7 +180,7 @@ def get_active_roles(user_id, db):
         return []
 
     from datetime import datetime
-    now = datetime.utcnow()
+    now = now_ist()
 
     pipeline = [
         # 1. Match the specific User

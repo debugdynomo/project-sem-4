@@ -5,6 +5,14 @@ Provides decorators, context managers, and utility functions to dynamically
 show/hide/disable UI elements based on the current user's effective permissions.
 """
 import streamlit as st
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    from datetime import datetime
+    return datetime.now(tz=IST).replace(tzinfo=None)
 from contextlib import contextmanager
 
 
@@ -114,7 +122,7 @@ def delegation_indicator(db):
     except Exception:
         return
 
-    now = datetime.utcnow()
+    now = now_ist()
     active_delegations = db["delegations"].count_documents({
         "Delegatee_id": uid,
         "Status": "Active",

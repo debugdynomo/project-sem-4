@@ -1,6 +1,13 @@
 import sys
 import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.now(tz=IST).replace(tzinfo=None)
 from bson import ObjectId
 
 # Add the project root to sys.path
@@ -123,13 +130,15 @@ def seed_db():
     print("✅ Instantiated 4 users with Multi-Role proof-of-concept.")
 
     # 4. Advanced Test Cases (G5 Module 41 Specific)
-    now = datetime.utcnow()
+    # Timestamps are relative to seed time so the demo data looks fresh
+    now = now_ist()
     alice = db.users.find_one({"Username": "admin_alice"})
     bob = db.users.find_one({"Username": "dr_bob"})
     charlie = db.users.find_one({"Username": "lead_dr_charlie"})
+    diana = db.users.find_one({"Username": "patient_diana"})
 
-    # A. Delegation: Bob (Doctor) delegates a Doctor role to Charlie (Lead Doctor)
-    # Note: Level check relaxed in seed data — this tests the delegation pipeline directly
+    # A. Active Delegation: Bob (Doctor) delegates Doctor role to Charlie (Lead Doctor)
+    # Started 2 hours ago, expires in 2 days — shows active delegation during demo
     db.delegations.insert_one({
         "Delegator_id": bob["_id"],
         "Delegatee_id": charlie["_id"],
@@ -137,16 +146,29 @@ def seed_db():
         "Delegation_type": "Hierarchical",
         "Reason": "Conference attendance coverage",
         "Status": "Active",
-        "Start_time": now - timedelta(hours=1),
+        "Start_time": now - timedelta(hours=2),
         "End_time": now + timedelta(days=2)
     })
 
-    # B. Break-Glass Override
+    # B. Pending Delegation: Charlie requests to delegate Lead_Doctor to Bob
+    # This gives the demo an item in the Approval Inbox
+    db.delegations.insert_one({
+        "Delegator_id": charlie["_id"],
+        "Delegatee_id": bob["_id"],
+        "Target_Role_id": lead_doctor_id,
+        "Delegation_type": "Peer-to-Peer",
+        "Reason": "Supervision handover for night shift",
+        "Status": "Pending",
+        "Start_time": now,
+        "End_time": now + timedelta(hours=8)
+    })
+
+    # C. Break-Glass Override — happened 15 min ago, still unresolved
     db.overrides.insert_one({
         "user_id": bob["_id"],
         "overridden_system": "HIGH-RISK-DATABASE-01",
         "reason": "Emergency triage during system outage",
-        "timestamp": now - timedelta(minutes=30),
+        "timestamp": now - timedelta(minutes=15),
         "duration_hours": 2,
         "status": "Active Alert",
         "resolved": False,
@@ -154,18 +176,59 @@ def seed_db():
         "resolved_at": None
     })
 
-    # C. Access Review Campaign
+    # D. Access Review Campaign — created yesterday, deadline in 3 days
     db.access_reviews.insert_one({
-        "title": "Hospital Compliance Review Q1",
+        "title": "Hospital Compliance Review Q2 2026",
         "deadline": now + timedelta(days=3),
         "created_by": alice["_id"],
-        "created_at": now - timedelta(hours=5),
+        "created_at": now - timedelta(hours=18),
         "status": "Active",
         "reviews": [
             {"user_id": bob["_id"], "role_id": doctor_id, "status": "Pending", "reviewed_by": None, "review_date": None},
             {"user_id": charlie["_id"], "role_id": lead_doctor_id, "status": "Pending", "reviewed_by": None, "review_date": None}
         ]
     })
+
+    # E. Pre-seeded audit logs for a realistic audit trail
+    audit_entries = [
+        {
+            "User_id": alice["_id"],
+            "Action": "ASSIGN_ROLE",
+            "Target_Entity": "users",
+            "Timestamp": now - timedelta(hours=20),
+            "IP_Address": "192.168.1.10",
+            "Status": "SUCCESS",
+            "Details": None,
+        },
+        {
+            "User_id": bob["_id"],
+            "Action": "VIEW_PATIENT_AUDIT_LOGS",
+            "Target_Entity": str(diana["_id"]),
+            "Timestamp": now - timedelta(hours=3),
+            "IP_Address": "192.168.1.22",
+            "Status": "SUCCESS",
+            "Details": None,
+        },
+        {
+            "User_id": charlie["_id"],
+            "Action": "CREATE_DELEGATION",
+            "Target_Entity": "delegations",
+            "Timestamp": now - timedelta(minutes=45),
+            "IP_Address": "192.168.1.35",
+            "Status": "SUCCESS",
+            "Details": None,
+        },
+        {
+            "User_id": bob["_id"],
+            "Action": "LOG_EMERGENCY_OVERRIDE",
+            "Target_Entity": "overrides",
+            "Timestamp": now - timedelta(minutes=15),
+            "IP_Address": "192.168.1.22",
+            "Status": "SUCCESS",
+            "Details": {"system": "HIGH-RISK-DATABASE-01"},
+        },
+    ]
+    db.audit_logs.insert_many(audit_entries)
 
     print("✅ Seeded delegations, overrides, and review campaigns.")
     print("")

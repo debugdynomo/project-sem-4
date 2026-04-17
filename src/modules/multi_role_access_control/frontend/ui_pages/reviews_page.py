@@ -1,5 +1,12 @@
 import streamlit as st
 import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.datetime.now(tz=IST).replace(tzinfo=None)
 from backend.database import get_db_connection
 from backend.reviews_service import (
     create_review_campaign,
@@ -57,7 +64,7 @@ def show_reviews_page():
 
     with tab_create:
         st.subheader("Launch New Campaign")
-        title = st.text_input("Campaign Title", value=f"Q{((datetime.datetime.now().month-1)//3)+1} {datetime.datetime.now().year} Access Review")
+        title = st.text_input("Campaign Title", value=f"Q{((now_ist().month-1)//3)+1} {now_ist().year} Access Review")
         deadline = st.date_input("Deadline")
         
         if st.button("Create Campaign"):

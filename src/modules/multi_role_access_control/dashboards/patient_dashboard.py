@@ -6,7 +6,23 @@ from backend.database import get_db_connection
 from backend.audit import log_audit_event
 from components.permission_guard import require_permission
 import datetime
-from datetime import time, timezone
+from datetime import time
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_ist():
+    """Return current time in IST as a naive datetime (matches MongoDB storage)."""
+    return datetime.datetime.now(tz=IST).replace(tzinfo=None)
+
+def to_ist(dt):
+    """Format a naive IST datetime for display."""
+    if dt is None:
+        return "N/A"
+    try:
+        return dt.strftime("%Y-%m-%d %I:%M:%S %p IST")
+    except Exception:
+        return str(dt)
 from bson.objectid import ObjectId
 
 def patient_dashboard():
@@ -28,7 +44,7 @@ def patient_dashboard():
     # ROUTER
     if selected == "Dashboard":
         show_main_dashboard()
-    elif selected == "Privacy & Consent (G5)":
+    elif selected == "Privacy & Consent":
         render_privacy_and_consent()
     elif selected == "My Access Logs":
         render_access_logs()
@@ -39,7 +55,7 @@ def show_main_dashboard():
     st.markdown("##Patient Portal")
     st.markdown("*Your secure gateway to health records and privacy management.*")
     st.divider()
-    st.info("Navigate to **Privacy & Consent (G5)** or **My Access Logs** to manage your data security.")
+    st.info("Navigate to **Privacy & Consent** or **My Access Logs** to manage your data security.")
 
     # ── Who Can See My Data panel ──
     st.divider()
@@ -93,7 +109,7 @@ def show_main_dashboard():
                     break
 
         # Also check active delegations for roles with READ_PATIENT_DATA
-        now = datetime.datetime.now(timezone.utc)
+        now = now_ist()
         active_delegations = list(db["delegations"].find({
             "Status": "Active",
             "Start_time": {"$lte": now},
@@ -143,7 +159,7 @@ def render_access_logs():
                 current_oid = current_user_id
 
             # ── Weekly access metric ──
-            week_ago = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=7)
+            week_ago = now_ist() - datetime.timedelta(days=7)
             weekly_count = db["audit_logs"].count_documents({
                 "Target_Entity": str(current_user_id),
                 "User_id": {"$ne": current_oid},
@@ -173,7 +189,7 @@ def render_access_logs():
                         pass
 
                 audit_data.append({
-                    "Date & Time": log.get("Timestamp", "N/A"),
+                    "Date & Time": to_ist(log.get("Timestamp")),
                     "Accessed By": username,
                     "Action": log.get("Action", ""),
                     "Status": log.get("Status", ""),
@@ -188,7 +204,7 @@ def render_access_logs():
             st.error(f"Unable to load audit logs: {e}")
 
 def render_privacy_and_consent():
-    st.markdown("## Privacy & Consent (G5)")
+    st.markdown("## Privacy & Consent")
     st.markdown("Manage who has delegated access to your health data.")
     st.divider()
     
@@ -315,8 +331,8 @@ def render_privacy_and_consent():
                                 if not p_role:
                                     st.error("Patient role not found in database.")
                                 else:
-                                    start_dt = datetime.datetime.combine(valid_from, time.min, tzinfo=timezone.utc)
-                                    end_dt = datetime.datetime.combine(valid_until, time.max, tzinfo=timezone.utc)
+                                    start_dt = datetime.datetime.combine(valid_from, time.min)
+                                    end_dt = datetime.datetime.combine(valid_until, time.max)
 
                                     from admin_service import create_delegation
                                     req_id = create_delegation(
