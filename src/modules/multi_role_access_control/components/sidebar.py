@@ -86,7 +86,15 @@ def sidebar(menu_items=None):
         default_idx = menu_items.index(restored_section)
 
     with st.sidebar:
-        st.markdown("## MediCare")
+        st.markdown(
+            """
+            <div style="text-align: center; padding: 1rem 0;">
+                <h1 style="margin:0; font-size: 2rem;">MediCare</h1>
+                <p style="opacity: 0.7; font-size: 0.9rem; margin: 0;">Medical Systems</p>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
 
         # ── Delegation indicator ──
         try:
@@ -106,7 +114,20 @@ def sidebar(menu_items=None):
             "",
             menu_items,
             icons=icons,
-            default_index=default_idx
+            default_index=default_idx,
+            styles={
+                "container": {"padding": "0!important", "background-color": "transparent"},
+                "nav-link": {
+                    "font-size": "14px", 
+                    "text-align": "left", 
+                    "margin": "4px 0", 
+                    "border-radius": "8px"
+                },
+                "nav-link-selected": {
+                    "border-radius": "8px",
+                    "box-shadow": "0 4px 10px rgba(0, 0, 0, 0.1)"
+                },
+            }
         )
 
         # ---------- Persist section to cookie on change ----------
@@ -117,7 +138,7 @@ def sidebar(menu_items=None):
                 st.session_state._last_cookie_section = selected
 
         # ---------- Logout: clear session AND cookies ----------
-        if selected == "Logout" or st.button("Logout (Fallback)"):
+        if selected == "Logout":
             # Delete cookies — these render as components that send JS commands
             cookie_manager.delete("user_id", key="delete_user_id")
             cookie_manager.delete("current_section", key="delete_current_section")

@@ -16,6 +16,10 @@ from bson.objectid import ObjectId
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="MediCare", layout="wide")
 
+# ---------------- APPLY PREMIUM UI ----------------
+from components.ui_config import apply_premium_ui
+apply_premium_ui()
+
 # ---------------- COOKIE MANAGER ----------------
 cookie_manager = stx.CookieManager()
 

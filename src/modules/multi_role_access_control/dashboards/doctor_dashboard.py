@@ -62,6 +62,11 @@ def doctor_dashboard():
         st.error("Please login first.")
         return
 
+    # ── User Profile Banner ──
+    user_name = st.session_state.get('username', 'Unknown User')
+    user_role = st.session_state.get('role', 'Unknown Role')
+    st.markdown(f"<div style='text-align: right; font-size: 0.9rem; color: var(--text-color); opacity: 0.7;'>👤 {user_name} | 🛡️ {user_role}</div>", unsafe_allow_html=True)
+
     db = get_db_connection()
     user_id = st.session_state.user_id
     
@@ -79,15 +84,21 @@ def doctor_dashboard():
 
     # 3. Page Routing — uses permission checks instead of is_lead_doctor booleans
     if selected_page == "Clinical Overview":
-        st.info("Module 41 Focus: Access Control & Delegation.")
-        st.markdown("""
-        **Clinical Access & Delegation Center**
-        
-        Welcome to the secure delegation portal. Use the sidebar to:
-        - View your active permissions (Effective Permissions).
-        - Delegate roles to colleagues (Delegation Center).
-        - Audit access to your patient's data.
-        """)
+        st.markdown(
+            """
+            <div class="medical-card">
+                <div class="medical-card-title">Clinical Access & Delegation Center</div>
+                <p style="opacity: 0.8; line-height: 1.6;">
+                    Welcome to the secure delegation portal. Module 41 Focus: Access Control & Delegation.
+                </p>
+                <ul style="padding-left: 1.5rem; margin-top: 1rem;">
+                    <li style="margin-bottom: 0.5rem;">View your active permissions (Effective Permissions).</li>
+                    <li style="margin-bottom: 0.5rem;">Delegate roles to colleagues (Delegation Center).</li>
+                    <li style="margin-bottom: 0.5rem;">Audit access to your patient's data.</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True
+        )
 
         # ── My Active Delegated Permissions card ──
         _render_delegated_permissions_card(db, user_id)
@@ -179,9 +190,23 @@ def _render_delegated_permissions_card(db, user_id):
         else:
             urgency = "Low"
 
+        color_hex = "#EF4444" if urgency == "High" else "#EAB308" if urgency == "Medium" else "#10B981"
+
         st.markdown(
-            f"{urgency} **{role_name}** delegated by **{delegator_name}** — "
-            f"expires in **{hours_left:.1f}h** ({d.get('Delegation_type', 'N/A')})"
+            f"""
+            <div class="medical-card" style="border-left: 4px solid {color_hex};">
+                <div class="medical-card-title">{role_name}</div>
+                <div style="font-size: 0.9rem; opacity: 0.7; margin-bottom: 0.5rem;">Delegated by: <b>{delegator_name}</b></div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+                    <span style="border: 1px solid var(--secondary-background-color); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600;">
+                        {d.get('Delegation_type', 'N/A')}
+                    </span>
+                    <span style="color: {color_hex}; font-weight: 600; font-size: 0.9rem;">
+                        Expires in {hours_left:.1f}h
+                    </span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True
         )
 
 def _render_delegation_center(db, user_id):

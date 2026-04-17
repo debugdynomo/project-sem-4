@@ -17,6 +17,11 @@ def admin_dashboard():
     
     st.session_state.setdefault("view", "dashboard")
 
+    # ── User Profile Banner ──
+    user_name = st.session_state.get('username', 'Unknown User')
+    user_role = st.session_state.get('role', 'Unknown Role')
+    st.markdown(f"<div style='text-align: right; font-size: 0.9rem; color: var(--text-color); opacity: 0.7;'>👤 {user_name} &ensp; | &ensp; 🛡️ {user_role}</div>", unsafe_allow_html=True)
+
     # The sidebar function uses role-based logic automatically
     selected = sidebar()
 
@@ -45,25 +50,24 @@ def admin_dashboard():
 
 def show_admin_home(db):
     st.markdown("## Dashboard")
-    st.markdown("Welcome to the Module 41 / G5 Access Control Center.")
     st.divider()
     
     overrides = get_active_overrides(db)
     if overrides:
         st.error("**ACTIVE EMERGENCY OVERRIDES DETECTED**")
         for o in overrides:
-            col1, col2 = st.columns([4, 1])
+            col, col2 = st.columns([4, 1])
             user_doc = db["users"].find_one({"_id": o["user_id"]})
             username = user_doc.get("Username") if user_doc else str(o["user_id"])
-            col1.write(f"**{username}** initiated break-glass access to **{o['overridden_system']}** at {o['timestamp']}")
-            col1.write(f"*Reason:* {o['reason']}")
+            col.write(f"**{username}** initiated break-glass access to **{o['overridden_system']}** at {o['timestamp']}")
+            col.write(f"*Reason:* {o['reason']}")
             if col2.button("Resolve", key=f"res_{o['_id']}"):
                 resolve_emergency_override(db, st.session_state.get("user_id"), str(o["_id"]))
                 st.rerun()
         st.divider()
     
-    col1, col2 = st.columns(2)
-    with col1:
+    col = st.columns(1)[0]
+    with col:
         st.markdown("### Access Statistics")
         metric_cols = st.columns(2)
         
@@ -80,9 +84,6 @@ def show_admin_home(db):
         with metric_cols[1]:
             st.metric("Configured Roles", roles_count)
             st.metric("Security Events", audit_events)
-            
-    with col2:
-         st.info("Use the sidebar to manage Users, Roles, Delegations, and view the System Audit.")
 
     # ── Upcoming Expirations Panel ──
     st.divider()
@@ -137,7 +138,6 @@ def show_admin_home(db):
 
 def show_system_audit(db):
     st.markdown("## System Audit Logs")
-    st.caption("Comprehensive view of all Module 41 security events.")
     st.divider()
     
     if db is not None:

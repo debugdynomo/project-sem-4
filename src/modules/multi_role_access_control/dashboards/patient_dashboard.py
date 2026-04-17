@@ -12,6 +12,11 @@ from bson.objectid import ObjectId
 def patient_dashboard():
     st.session_state.setdefault("view", "main")
 
+    # ── User Profile Banner ──
+    user_name = st.session_state.get('username', 'Unknown User')
+    user_role = st.session_state.get('role', 'Unknown Role')
+    st.markdown(f"<div style='text-align: right; font-size: 0.9rem; color: var(--text-color); opacity: 0.7;'>👤 {user_name} | 🛡️ {user_role}</div>", unsafe_allow_html=True)
+
     # Sidebar ignores explicit list, depends on st.session_state.role internally
     selected = sidebar()
 
@@ -31,7 +36,7 @@ def patient_dashboard():
         show_main_dashboard()
 
 def show_main_dashboard():
-    st.markdown("## Welcome to the Patient Portal")
+    st.markdown("##Patient Portal")
     st.markdown("*Your secure gateway to health records and privacy management.*")
     st.divider()
     st.info("Navigate to **Privacy & Consent (G5)** or **My Access Logs** to manage your data security.")
